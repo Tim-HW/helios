@@ -13,7 +13,6 @@
 export const AU = 149597870.7;          // km
 export const C_KM_S = 299792.458;       // speed of light, km/s
 export const J2000 = 2451545.0;         // Julian date of the J2000.0 epoch
-export const DAY_S = 86400;
 
 // Solar irradiance at 1 AU, W/m^2 -- used for the HUD readout only, never to
 // dim the render (see render/material.js for why).
@@ -445,8 +444,4 @@ export const JWST = {
 
 export const CRAFT = [ISS, JWST];
 
-export const ALL_BODIES = [SUN, ...PLANETS, ...MINOR_PLANETS, ...MOONS];
 
-export function bodyById(id) {
-  return ALL_BODIES.find((b) => b.id === id);
-}

@@ -8,11 +8,12 @@ tests
 !CREDITS.md
 serve.py
 serve.sh
-Dockerfile
+docker/Dockerfile
+docker/docker-compose.yml
 .dockerignore
 # docker/nginx.conf must stay in the build context (it is COPYd to
-# /etc/nginx/conf.d), so the directory is not ignored — nothing copies it
-# into the served root.
+# /etc/nginx/conf.d), so that one file is not ignored — and nothing copies the
+# docker/ directory into the served root.
 
 # The 320 MB of source models these lines used to exclude were deleted from the
 # repository on 2026-09-05: their textures had already been extracted into

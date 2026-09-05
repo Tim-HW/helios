@@ -1,0 +1,10 @@
+# Probe output. serve.py recreates this directory on demand when the browser
+# test pages POST their results back; nothing in it is worth keeping.
+.probe/
+.shots/
+.verify/
+
+# Editor and OS noise.
+*.swp
+*~
+.DS_Store

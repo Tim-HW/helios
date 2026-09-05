@@ -1,6 +1,12 @@
 services:
   helios:
-    build: .
+    # The build context is the repository root, not this directory: the image
+    # copies index.html, src/, vendor/ and assets/, and .dockerignore lives up
+    # there too. `build: .` would resolve the context to docker/ and fail on
+    # the first COPY.
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     image: helios:latest
     # Publish on loopback and put a TLS-terminating reverse proxy in front.
     # Binding straight to 0.0.0.0 puts a plain-HTTP origin on the internet.

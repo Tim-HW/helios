@@ -133,7 +133,7 @@ ck "all caps dropped"   "[ALL]" "$(docker inspect -f '{{.HostConfig.CapDrop}}' $
 ck "cannot write root"  "1"    "$(docker exec $NAME sh -c 'touch /usr/share/nginx/html/x 2>/dev/null; echo $?')"
 ck "no symlinks in served root" "0" "$(docker exec $NAME sh -c 'find /usr/share/nginx/html -type l | wc -l' | tr -d ' ')"
 ck "nothing in root is writable"  "0" "$(docker exec $NAME sh -c 'find /usr/share/nginx/html -user nginx -o -perm -o+w | wc -l' | tr -d ' ')"
-ck "base image pinned by digest"  "yes" "$(grep -q '^FROM .*@sha256:' Dockerfile && echo yes || echo no)"
+ck "base image pinned by digest"  "yes" "$(grep -q "^FROM .*@sha256:" docker/Dockerfile && echo yes || echo no)"
 ck "every source file 200" "0" "$(for f in $(docker exec $NAME sh -c 'cd /usr/share/nginx/html && find src vendor -type f'); do curl -s -o /dev/null -w '%{http_code}\n' "$B/$f"; done | grep -cv 200)"
 
 echo

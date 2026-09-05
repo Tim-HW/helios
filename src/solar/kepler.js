@@ -215,4 +215,4 @@ export function sampleKeplerianOrbit(moon, segments = 256) {
 }
 
 // Kept as the names the rest of the code reads best with.
-export { keplerianPosition as moonPosition, sampleKeplerianOrbit as sampleMoonOrbit };
+export { keplerianPosition as moonPosition };

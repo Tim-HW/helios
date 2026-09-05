@@ -378,10 +378,13 @@ here carries. That needs resolving before this is shared. See `CREDITS.md`.
 ## Deploying it
 
 ```sh
-docker compose up --build         # http://127.0.0.1:8080
-tests/verify-container.sh         # 67 assertions against the running image
-tests/verify-vendor.sh --upstream # 10 assertions: vendored three.js vs npm
+docker compose -f docker/docker-compose.yml up --build   # http://127.0.0.1:8080
+tests/verify-container.sh          # 68 assertions against the running image
+tests/verify-vendor.sh --upstream  # 10 assertions: vendored three.js vs npm
 ```
+
+The compose file lives in `docker/` but builds from the repository root — that
+is where `index.html`, `src/`, `vendor/`, `assets/` and `.dockerignore` are.
 
 The image is nginx serving five things — `index.html`, `src/`, `vendor/`, the 15
 assets the app actually loads, and `CREDITS.md` — read-only, unprivileged, with
