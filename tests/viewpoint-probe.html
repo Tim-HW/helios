@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Helios viewpoint probe</title>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.js" } }
+</script>
+<style>
+  body{background:#0a0d14;color:#dbe4f0;font:13px/1.6 ui-monospace,Menlo,monospace;padding:18px}
+  .pass{color:#7ddc9a}.fail{color:#ff8a70}.dim{color:#8394ab}
+  h1{font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:#8394ab}
+  pre{white-space:pre-wrap;margin:0 0 10px}
+  figure{display:inline-block;margin:0 10px 10px 0}
+  figcaption{color:#8394ab;font-size:11px;text-align:center;padding-top:3px}
+  canvas{border:1px solid #2a3140;display:block}
+</style>
+</head>
+<body>
+<h1>Helios viewpoint probe</h1>
+<pre id="log">running…</pre>
+<div id="thumbs"></div>
+<script type="module">
+import * as THREE from 'three';
+import { SolarSystem } from '../src/solar/bodies.js';
+import { OrbitLines } from '../src/solar/orbits.js';
+import { AsteroidBelt } from '../src/solar/belt.js';
+import { createStarfield } from '../src/render/starfield.js';
+import { FlyCamera } from '../src/camera/flycam.js';
+import { createViewpoints } from '../src/ui/viewpoints.js';
+import { julianDate } from '../src/solar/kepler.js';
+const L = [];
+const say = (c, m) => { L.push(`<span class="${c}">${m}</span>`);
+  document.getElementById('log').innerHTML = L.join('\n'); };
+window.addEventListener('error', e => say('fail', 'ERROR: ' + (e.error?.stack || e.message)));
+window.addEventListener('unhandledrejection', e => say('fail', 'REJECTED: ' + (e.reason?.stack || e.reason)));
+try {
+
+
+const W = 300, H = 200;
+const canvas = document.createElement('canvas');
+canvas.width = W; canvas.height = H;
+const renderer = new THREE.WebGLRenderer({
+  canvas, antialias: true, logarithmicDepthBuffer: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H, false);
+renderer.setClearColor(0x000000, 1);
+renderer.toneMapping = THREE.NeutralToneMapping;
+
+const scene = new THREE.Scene();
+const system = new SolarSystem();
+scene.add(system.root);
+const orbits = new OrbitLines(system);
+scene.add(orbits.group);
+const belt = new AsteroidBelt();
+scene.add(belt.points);
+const stars = createStarfield(5000, 5e8);
+scene.add(stars);
+
+const camera = new THREE.PerspectiveCamera(55, W / H, 0.1, 1e10);
+const jd = julianDate(new Date('2026-03-20T00:00:00Z'));
+system.updatePositions(jd);
+
+const flycam = new FlyCamera(camera, system, canvas);
+const viewpoints = createViewpoints(system, flycam);
+const res = new THREE.Vector2(W, H);
+const opts = { showMarkers: true, realisticLight: false, exaggeration: 1, time: 0 };
+
+function draw() {
+  flycam.update(0);
+  camera.updateMatrixWorld(true);
+  stars.position.copy(camera.position);
+  system.updateAppearance(camera, res, opts);
+  orbits.update(jd, camera.position);
+  renderer.render(scene, camera);
+}
+function stats(w = W, h = H) {
+  const gl = renderer.getContext();
+  const buf = new Uint8Array(w * h * 4);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  let lit = 0, max = 0;
+  for (let i = 0; i < buf.length; i += 4) {
+    const v = Math.max(buf[i], buf[i + 1], buf[i + 2]);
+    if (v > 8) lit++; if (v > max) max = v;
+  }
+  return { lit, max, buf };
+}
+function thumb(name) {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  c.getContext('2d').drawImage(canvas, 0, 0);
+  const fig = document.createElement('figure');
+  fig.appendChild(c);
+  const cap = document.createElement('figcaption'); cap.textContent = name;
+  fig.appendChild(cap);
+  document.getElementById('thumbs').appendChild(fig);
+}
+
+say('dim', `date ${new Date((jd - 2440587.5) * 86400000).toISOString().slice(0,10)}   ${W}x${H} per view\n`);
+
+for (const vp of viewpoints) {
+  vp.apply();
+  // placeAt starts no travel animation, so one draw settles it.
+  draw();
+  const s = stats();
+  say(s.lit > 20 ? 'pass' : 'fail',
+    `${vp.name.padEnd(22)} lit ${String(s.lit).padStart(6)} px  peak ${String(s.max).padStart(3)}`
+    + `   cam ${flycam.frameBody.def.name}`);
+  thumb(vp.name);
+}
+
+// --- the eclipse coincidence, measured off the rendered image ---------------
+// Geometry is independent of field of view, so measure through a narrow one:
+// at 55 degrees a half-degree disc is only ~3 px across and unmeasurable.
+say('', '');
+const MW = 700, MH = 700, MFOV = 4;
+const mcanvas = document.createElement('canvas');
+mcanvas.width = MW; mcanvas.height = MH;
+const mrend = new THREE.WebGLRenderer({
+  canvas: mcanvas, antialias: true, logarithmicDepthBuffer: true, preserveDrawingBuffer: true });
+mrend.setSize(MW, MH, false);
+mrend.setClearColor(0x000000, 1);
+const mcam = new THREE.PerspectiveCamera(MFOV, 1, 0.1, 1e10);
+
+function measureDisc(targetId, fromId) {
+  const target = system.byId.get(targetId);
+  const from = system.byId.get(fromId);
+  const dir = new THREE.Vector3().subVectors(target.worldPos, from.worldPos).normalize();
+  // Stand on the surface of `from`, on the side facing the target.
+  mcam.position.copy(from.worldPos).addScaledVector(dir, from.def.radius);
+  mcam.lookAt(target.worldPos);
+  mcam.updateMatrixWorld(true);
+
+  // Light the target uniformly for the measurement: we are measuring the
+  // silhouette's geometry, and a crescent phase would truncate it.
+  const u = target.mesh.material.uniforms;
+  const keepA = u.uAmbient.value, keepI = u.uSunIntensity.value;
+  // The corona glows well past the photosphere, so it would be measured as
+  // part of the disc. Hide it: we want the body's silhouette, not its halo.
+  const sunRec = system.byId.get('sun');
+  sunRec.corona.visible = false;
+  u.uAmbient.value = 1; u.uSunIntensity.value = 0;
+  system.updateAppearance(mcam, new THREE.Vector2(MW, MH), opts);
+  u.uAmbient.value = 1; u.uSunIntensity.value = 0;
+  mrend.render(scene, mcam);
+  u.uAmbient.value = keepA; u.uSunIntensity.value = keepI;
+  sunRec.corona.visible = true;
+
+  const gl = mrend.getContext();
+  const buf = new Uint8Array(MW * MH * 4);
+  gl.readPixels(0, 0, MW, MH, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  let minX = MW, maxX = -1;
+  const row = MH >> 1;
+  for (let x = 0; x < MW; x++) {
+    const i = (row * MW + x) * 4;
+    if (Math.max(buf[i], buf[i+1], buf[i+2]) > 60) { if (x < minX) minX = x; if (x > maxX) maxX = x; }
+  }
+  const widthPx = maxX - minX + 1;
+  const pxPerRad = (MH * 0.5) / Math.tan(MFOV * Math.PI / 360);
+  const deg = (widthPx / pxPerRad) * 180 / Math.PI;
+  const dist = mcam.position.distanceTo(target.worldPos);
+  const predicted = 2 * Math.asin(target.def.radius / dist) * 180 / Math.PI;
+  return { widthPx, deg, predicted, dist };
+}
+
+const sun = measureDisc('sun', 'earth');
+const moon = measureDisc('moon', 'earth');
+say('', 'Measured off the rendered pixels, standing on Earth’s surface:');
+say(Math.abs(sun.deg - sun.predicted) / sun.predicted < 0.06 ? 'pass' : 'fail',
+  `  Sun  ${String(sun.widthPx).padStart(3)} px wide → ${sun.deg.toFixed(3)}°   (geometry predicts ${sun.predicted.toFixed(3)}°)`);
+say(Math.abs(moon.deg - moon.predicted) / moon.predicted < 0.06 ? 'pass' : 'fail',
+  `  Moon ${String(moon.widthPx).padStart(3)} px wide → ${moon.deg.toFixed(3)}°   (geometry predicts ${moon.predicted.toFixed(3)}°)`);
+const ratio = sun.deg / moon.deg;
+say(ratio > 0.85 && ratio < 1.18 ? 'pass' : 'fail',
+  `  ratio Sun/Moon = ${ratio.toFixed(3)}  — near 1 is why total eclipses happen`);
+say('dim', `  (Sun ${(sun.dist/1e6).toFixed(1)} Mkm away, Moon ${Math.round(moon.dist).toLocaleString()} km)`);
+
+thumb('Sun disc (4° fov)');
+say('dim', 'measurement done');
+
+// --- a few viewpoints at a size you can actually judge ----------------------
+const BW = 640, BH = 400;
+const bcanvas = document.createElement('canvas');
+bcanvas.width = BW; bcanvas.height = BH;
+const brend = new THREE.WebGLRenderer({
+  canvas: bcanvas, antialias: true, logarithmicDepthBuffer: true, preserveDrawingBuffer: true });
+brend.setSize(BW, BH, false);
+brend.setClearColor(0x000000, 1);
+brend.toneMapping = THREE.NeutralToneMapping;
+const bcam = new THREE.PerspectiveCamera(55, BW / BH, 0.1, 1e10);
+const bres = new THREE.Vector2(BW, BH);
+const big = document.createElement('div');
+document.body.appendChild(big);
+
+for (const name of ['The Earth–Moon gap', 'The Sun from Earth', 'Saturn’s rings',
+                    'Jupiter’s moons', 'The Sun from Pluto']) {
+  const vp = viewpoints.find(v => v.name === name);
+  vp.apply();
+  flycam.update(0);
+  bcam.position.copy(camera.position);
+  bcam.quaternion.copy(camera.quaternion);
+  bcam.fov = flycam.fov;                 // viewpoints may set their own zoom
+  bcam.updateProjectionMatrix();
+  bcam.updateMatrixWorld(true);
+  stars.position.copy(bcam.position);
+  system.updateAppearance(bcam, bres, opts);
+  orbits.update(jd, bcam.position);
+  brend.render(scene, bcam);
+  const c = document.createElement('canvas');
+  c.width = BW; c.height = BH;
+  c.getContext('2d').drawImage(bcanvas, 0, 0);
+  const fig = document.createElement('figure');
+  fig.appendChild(c);
+  const cap = document.createElement('figcaption');
+  cap.textContent = `${name}  (640×400, fov ${flycam.fov.toFixed(0)}°)`;
+  fig.appendChild(cap);
+  big.appendChild(fig);
+}
+say('pass', 'PROBE COMPLETE');
+} catch (e) {
+  say('fail', 'THREW: ' + (e?.stack || e));
+}
+</script>
+</body>
+</html>

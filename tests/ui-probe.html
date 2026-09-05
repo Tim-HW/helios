@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>UI probe</title>
+<style>
+ body{background:#0a0d14;color:#dbe4f0;font:12px/1.5 ui-monospace,Menlo,monospace;padding:14px;margin:0}
+ .pass{color:#7ddc9a}.fail{color:#ff8a70}.dim{color:#8394ab}
+ pre{white-space:pre-wrap;margin:0}
+ iframe{width:1280px;height:720px;border:1px solid #2a3140;position:absolute;left:-4000px}
+</style></head><body>
+<!-- In the markup, so the parent's load event waits for the app to boot. -->
+<iframe id="app" src="../index.html"></iframe>
+<pre id="log">running…</pre>
+<script type="module">
+import { postProbe, onReady } from './probe-io.js';
+
+const L=[]; const say=(c,m)=>{L.push(`<span class="${c}">${m}</span>`);
+  document.getElementById('log').innerHTML=L.join('\n');};
+
+onReady(() => {
+try {
+  const fr = document.getElementById('app');
+  const w = fr.contentWindow, d = fr.contentDocument;
+  const helios = w.helios;
+  if (!helios) { say('fail','the app did not expose window.helios'); throw new Error('no app'); }
+  say('pass', 'app booted inside the frame');
+
+  const $ = (sel) => d.querySelector(sel);
+  const $$ = (sel) => [...d.querySelectorAll(sel)];
+
+  // --- the layout bug that started this -----------------------------------
+  const side = $('#sidebar').getBoundingClientRect();
+  const overlaps = $$('.panel').filter((p) => p !== $('#sidebar'))
+    .map((p) => p.getBoundingClientRect())
+    .filter((r) => !(r.right < side.left || r.left > side.right
+                  || r.bottom < side.top || r.top > side.bottom));
+  say(overlaps.length === 0 ? 'pass':'fail',
+    `sidebar overlaps ${overlaps.length} other panel(s)`);
+
+  // Every destination and viewpoint must be reachable, not clipped away.
+  const targets = $$('#target-list .target');
+  const presets = $$('#preset-list .target');
+  const moments = $$('#moment-list .target');
+  const listBox = $('#target-list');
+  const reachable = listBox.scrollHeight <= listBox.clientHeight
+    || listBox.scrollHeight > 0;   // scrollable counts as reachable
+  say(targets.length >= 25 && presets.length === 8 && moments.length === 4 && reachable
+      ? 'pass':'fail',
+    `${targets.length} destinations, ${presets.length} viewpoints, ${moments.length} moments; `
+    + `list scrolls ${listBox.scrollHeight}px in ${listBox.clientHeight}px`);
+
+  // The last destination has to be scrollable into view.
+  const last = targets[targets.length - 1];
+  last.scrollIntoView();
+  const lb = last.getBoundingClientRect();
+  const inView = lb.top >= side.top - 1 && lb.bottom <= side.bottom + 1;
+  say(inView ? 'pass':'fail',
+    `last destination (${last.textContent.trim()}) reachable: ${inView}`);
+
+  // --- date entry ----------------------------------------------------------
+  const input = $('#date-input'), go = $('#btn-goto-date');
+  input.value = '2026-03-03 10:53'; go.click();
+  const got = helios.clock.date.toISOString().slice(0,16);
+  say(got === '2026-03-03T10:53' ? 'pass':'fail', `typed date → ${got}`);
+
+  input.value = 'not a date'; go.click();
+  const unchanged = helios.clock.date.toISOString().slice(0,16) === got;
+  say(unchanged && input.classList.contains('bad') ? 'pass':'fail',
+    `rubbish input rejected and flagged (clock unchanged: ${unchanged})`);
+
+  input.value = '2026-02-31'; go.click();
+  const rolled = helios.clock.date.toISOString().slice(0,16) === got;
+  say(rolled ? 'pass':'fail', `impossible date (2026-02-31) rejected: ${rolled}`);
+
+  // --- moments -------------------------------------------------------------
+  for (const btn of moments) {
+    const name = btn.querySelector('span').textContent;
+    btn.click();
+    const when = helios.clock.date.toISOString().slice(0,16);
+    const target = helios.flycam.target ? helios.flycam.target.def.name : '(none)';
+    const paused = helios.clock.paused;
+    say(target !== '(none)' && paused ? 'pass':'fail',
+      `  ${name.padEnd(24)} → ${when}  target ${target}  paused ${paused}`);
+  }
+
+  // --- help toggles rather than vanishing ----------------------------------
+  const help = $('#help');
+  $('#help-close').click();
+  const hid = help.classList.contains('hidden');
+  $('#btn-help').click();
+  const back = !help.classList.contains('hidden');
+  say(hid && back ? 'pass':'fail', `help dismissed and recalled: ${hid} / ${back}`);
+
+  // --- sections collapse ---------------------------------------------------
+  const det = $$('#sidebar details');
+  det[0].open = false;
+  say(det.length >= 5 && !det[0].open ? 'pass':'fail',
+    `${det.length} collapsible sections`);
+  det[0].open = true;
+
+  say('pass','PROBE COMPLETE');
+} catch (e) { say('fail','THREW: ' + (e && e.stack || e)); }
+
+postProbe('ui.txt', document.getElementById('log').textContent);
+});
+</script></body></html>

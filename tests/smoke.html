@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Helios checks</title>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.js" } }
+</script>
+<style>
+  body { background:#05070c; color:#dbe4f0; font:13px/1.6 ui-monospace,Menlo,monospace; padding:24px; }
+  h1 { font-size:14px; letter-spacing:.14em; text-transform:uppercase; color:#8394ab; font-weight:500 }
+  #summary { font-size:20px; margin:16px 0 20px }
+  table { border-collapse:collapse }
+  td { padding:4px 18px 4px 0; vertical-align:top }
+  td.detail { color:#8394ab; white-space:pre-line }
+  .pass { color:#7ddc9a } .fail { color:#ff8a70 }
+  pre { color:#ff8a70; white-space:pre-wrap }
+</style>
+</head>
+<body>
+<h1>Helios — model checks</h1>
+<div id="summary">running…</div>
+<table id="out"></table>
+<pre id="err"></pre>
+<script type="module">
+import { runChecks } from './checks.js';
+import { postProbe, onReady } from './probe-io.js';
+onReady(() => {
+let rows = [];
+try {
+  rows = runChecks();
+} catch (e) {
+  document.getElementById('err').textContent = (e && e.stack) || String(e);
+}
+const out = document.getElementById('out');
+for (const r of rows) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td class="${r.ok ? 'pass' : 'fail'}">${r.ok ? 'PASS' : 'FAIL'}</td>`
+    + `<td>${r.name}</td><td class="detail">${r.detail}</td>`;
+  out.appendChild(tr);
+}
+const bad = rows.filter(r => !r.ok).length;
+const s = document.getElementById('summary');
+s.textContent = rows.length === 0 ? 'harness failed to run'
+  : bad ? `${bad} of ${rows.length} FAILED` : `all ${rows.length} checks passed`;
+s.className = bad || !rows.length ? 'fail' : 'pass';
+document.title = bad ? `FAIL ${bad}/${rows.length}` : `PASS ${rows.length}`;
+// Also hand the results back, so a headless run does not depend on catching the
+// page at the right moment with a screenshot.
+postProbe('checks.txt', `${s.textContent}\n\n`
+  + rows.map((r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}\n      ${r.detail}`).join('\n'));
+});
+</script>
+</body>
+</html>

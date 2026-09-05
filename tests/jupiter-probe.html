@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Jupiter map probe</title>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.js" } }</script>
+<style>
+ body{background:#0a0d14;color:#dbe4f0;font:12px/1.5 ui-monospace,Menlo,monospace;padding:14px}
+ .pass{color:#7ddc9a}.fail{color:#ff8a70}.dim{color:#8394ab}
+ figure{display:inline-block;margin:0 10px 10px 0}
+ figcaption{color:#8394ab;font-size:10px;text-align:center}
+ canvas{border:1px solid #2a3140;display:block}
+ pre{white-space:pre-wrap;margin:0 0 8px}
+</style></head><body>
+<h1 style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#8394ab">
+Jupiter — photographic map vs procedural</h1>
+<img id="jmap" src="../assets/textures/jupiter.jpg"
+     alt="" style="display:none">
+<pre id="log">running…</pre><div id="out"></div>
+<script type="module">
+import * as THREE from 'three';
+import { SolarSystem } from '../src/solar/bodies.js';
+import { julianDate } from '../src/solar/kepler.js';
+import { postProbe, postCanvas, onReady } from './probe-io.js';
+
+const L=[]; const say=(c,m)=>{L.push(`<span class="${c}">${m}</span>`);
+  document.getElementById('log').innerHTML=L.join('\n');};
+const captured=[]; for(const k of ['error','warn']){const o=console[k].bind(console);
+  console[k]=(...a)=>{captured.push(`[${k}] ${a.map(String).join(' ')}`);o(...a);};}
+
+onReady(() => {
+try {
+  const S=420;
+  const canvas=document.createElement('canvas'); canvas.width=S; canvas.height=S;
+  const r=new THREE.WebGLRenderer({canvas,antialias:true,logarithmicDepthBuffer:true,
+    preserveDrawingBuffer:true});
+  r.setSize(S,S,false); r.setClearColor(0x000000,1); r.toneMapping=THREE.NeutralToneMapping;
+  const scene=new THREE.Scene();
+  const system=new SolarSystem(); scene.add(system.root);
+  system.updatePositions(julianDate(new Date('2026-06-01T00:00:00Z')));
+  const jup = system.byId.get('jupiter');
+  const u = jup.mesh.material.uniforms;
+
+  // Build the texture from the <img> above, which the page has already waited
+  // for. This exercises the same shader path as the app's TextureLoader without
+  // racing the screenshot.
+  const img = document.getElementById('jmap');
+  // The <img> is in the markup, so the load event already waited for it.
+  const tex = new THREE.Texture(img);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.needsUpdate = true;
+  u.uMap.value = tex;
+  u.uHasMap.value = 1;
+  say(tex.image && tex.image.width ? 'pass':'fail',
+    `map loaded: ${tex.image ? tex.image.width+'x'+tex.image.height : 'FAILED'}`
+    + `   uHasMap=${u.uHasMap.value}   colorSpace=${tex.colorSpace}`);
+
+  const cam=new THREE.PerspectiveCamera(45,1,0.1,1e10);
+  const res=new THREE.Vector2(S,S);
+  const opts={showMarkers:false,realisticLight:false,exaggeration:1,time:0};
+  const buf=new Uint8Array(S*S*4);
+
+  function shot(label, useMap) {
+    u.uHasMap.value = useMap ? 1 : 0;
+    const R=jup.renderRadius;
+    const dist=R/(0.86*Math.tan(cam.fov*Math.PI/360));
+    const sd=jup.worldPos.clone().negate().normalize();
+    const sv=new THREE.Vector3(0,1,0).cross(sd).normalize();
+    const dv=sd.clone().multiplyScalar(0.55).add(sv.multiplyScalar(0.8))
+      .add(new THREE.Vector3(0,0.2,0)).normalize();
+    cam.position.copy(jup.worldPos).addScaledVector(dv,dist);
+    cam.lookAt(jup.worldPos); cam.updateMatrixWorld(true);
+    system.updateAppearance(cam,res,opts);
+    r.render(scene,cam);
+    const gl=r.getContext(); gl.readPixels(0,0,S,S,gl.RGBA,gl.UNSIGNED_BYTE,buf);
+    let lit=0,sum=0,sq=0;
+    for(let i=0;i<buf.length;i+=4){
+      const v=(buf[i]+buf[i+1]+buf[i+2])/3;
+      if(v>20){lit++;sum+=v;sq+=v*v;}
+    }
+    const mean=sum/Math.max(lit,1);
+    const sd2=Math.sqrt(Math.max(sq/Math.max(lit,1)-mean*mean,0));
+    say('dim',`${label.padEnd(26)} lit ${String(lit).padStart(6)}  mean ${mean.toFixed(1)}`
+      + `  detail (sd/mean) ${(sd2/Math.max(mean,1)).toFixed(3)}`);
+    const c=document.createElement('canvas'); c.width=S;c.height=S;
+    c.getContext('2d').drawImage(canvas,0,0);
+    const f=document.createElement('figure'); f.appendChild(c);
+    const cap=document.createElement('figcaption'); cap.textContent=label;
+    f.appendChild(cap); document.getElementById('out').appendChild(f);
+    return sd2/Math.max(mean,1);
+  }
+
+  const withMap = shot('with the real map', true);
+  const proc    = shot('procedural fallback', false);
+  u.uHasMap.value = 1;
+  say(withMap > proc ? 'pass':'fail',
+    `  the map carries more surface detail than the procedural bands `
+    + `(${withMap.toFixed(3)} vs ${proc.toFixed(3)})`);
+
+  say('','');
+  say(captured.length?'fail':'pass',
+      captured.length?`${captured.length} console message(s):`:'no console errors or warnings');
+  for(const c of captured) say('fail','  '+c.slice(0,400));
+  say('pass','PROBE COMPLETE');
+} catch(e){ say('fail','THREW: '+(e?.stack||e)); }
+
+postProbe('jupiter.txt', document.getElementById('log').textContent);
+document.querySelectorAll('figure canvas')
+  .forEach((c, i) => postCanvas(`jupiter-${i}.png`, c));
+});
+</script></body></html>

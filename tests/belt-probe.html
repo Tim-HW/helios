@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Helios belt probe</title>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.js" } }
+</script>
+<style>
+  body{background:#0a0d14;color:#dbe4f0;font:13px/1.6 ui-monospace,Menlo,monospace;padding:18px}
+  .pass{color:#7ddc9a}.fail{color:#ff8a70}.dim{color:#8394ab}
+  h1{font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:#8394ab}
+  figure{display:inline-block;margin:0 12px 12px 0}
+  figcaption{color:#8394ab;font-size:11px;text-align:center;padding-top:4px}
+  canvas{border:1px solid #2a3140;display:block}
+  pre{white-space:pre-wrap;margin:0 0 10px}
+</style>
+</head>
+<body>
+<h1>Helios asteroid belt probe</h1>
+<pre id="log">running…</pre>
+<div id="out"></div>
+<script type="module">
+import * as THREE from 'three';
+import { SolarSystem } from '../src/solar/bodies.js';
+import { OrbitLines } from '../src/solar/orbits.js';
+import { AsteroidBelt } from '../src/solar/belt.js';
+import { createStarfield } from '../src/render/starfield.js';
+import { julianDate } from '../src/solar/kepler.js';
+import { AU } from '../src/solar/data.js';
+
+const L = [];
+const say = (c, m) => { L.push(`<span class="${c}">${m}</span>`);
+  document.getElementById('log').innerHTML = L.join('\n'); };
+const captured = [];
+for (const k of ['error', 'warn']) {
+  const o = console[k].bind(console);
+  console[k] = (...a) => { captured.push(`[${k}] ${a.map(String).join(' ')}`); o(...a); };
+}
+
+try {
+  const W = 620, H = 620;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const renderer = new THREE.WebGLRenderer({
+    canvas, antialias: true, logarithmicDepthBuffer: true, preserveDrawingBuffer: true });
+  renderer.setSize(W, H, false);
+  renderer.setClearColor(0x000000, 1);
+  renderer.toneMapping = THREE.NeutralToneMapping;
+
+  const scene = new THREE.Scene();
+  const system = new SolarSystem();
+  scene.add(system.root);
+  const orbits = new OrbitLines(system);
+  scene.add(orbits.group);
+  const belt = new AsteroidBelt();
+  scene.add(belt.points);
+  scene.add(createStarfield(3000, 5e8));
+
+  const jd = julianDate(new Date('2026-09-05T00:00:00Z'));
+  system.updatePositions(jd);
+  belt.update(jd);
+  say('pass', `belt built: ${belt.count.toLocaleString()} objects on the GPU`);
+
+  const cam = new THREE.PerspectiveCamera(55, 1, 0.1, 1e10);
+  const res = new THREE.Vector2(W, H);
+  const opts = { showMarkers: true, realisticLight: false, exaggeration: 1, time: 0 };
+  const buf = new Uint8Array(W * H * 4);
+
+  function shoot(name, pos, look, fov = 55) {
+    cam.fov = fov; cam.updateProjectionMatrix();
+    cam.position.copy(pos); cam.lookAt(look); cam.updateMatrixWorld(true);
+    system.updateAppearance(cam, res, opts);
+    orbits.update(jd, cam.position);
+    renderer.render(scene, cam);
+    const gl = renderer.getContext();
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    let lit = 0;
+    for (let i = 0; i < buf.length; i += 4) if (Math.max(buf[i], buf[i+1], buf[i+2]) > 8) lit++;
+    say(lit > 100 ? 'pass' : 'fail', `${name.padEnd(30)} ${String(lit).padStart(6)} lit px`);
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    c.getContext('2d').drawImage(canvas, 0, 0);
+    const fig = document.createElement('figure');
+    fig.appendChild(c);
+    const cap = document.createElement('figcaption'); cap.textContent = name;
+    fig.appendChild(cap);
+    document.getElementById('out').appendChild(fig);
+    return buf;
+  }
+
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const O = V(0, 0, 0);
+
+  // Straight down on the ecliptic. The Kirkwood gaps should be visible as dark
+  // rings in the annulus, and the Trojans as two clumps on Jupiter's orbit.
+  shoot('belt + Trojans from directly above', V(0, 1.9e9, 0), O, 55);
+  shoot('belt only, from above (tighter)', V(0, 7.2e8, 0), O, 55);
+  shoot('belt edge-on from the ecliptic', V(6.5e8, 0, 0), O, 42);
+  shoot('inside the belt at 2.7 AU', V(2.7 * AU, 0.04 * AU, 0), V(0, 0.04 * AU, -1e9), 62);
+
+  say('', '');
+  say(captured.length ? 'fail' : 'pass',
+      captured.length ? `${captured.length} console message(s):` : 'no console errors or warnings');
+  for (const c of captured) say('fail', '  ' + c.slice(0, 500));
+  say('pass', 'PROBE COMPLETE');
+} catch (e) {
+  say('fail', 'THREW: ' + (e?.stack || e));
+}
+</script>
+</body>
+</html>

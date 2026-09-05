@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Helios render probe</title>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.js" } }
+</script>
+<style>
+  body { background:#0a0d14; color:#dbe4f0; font:13px/1.55 ui-monospace,Menlo,monospace; padding:20px; }
+  .pass{color:#7ddc9a}.fail{color:#ff8a70}.warn{color:#ffcc73}
+  pre{white-space:pre-wrap;margin:0}
+  h1{font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:#8394ab}
+  canvas{border:1px solid #333;margin:6px 8px 0 0;image-rendering:pixelated}
+</style>
+</head>
+<body>
+<h1>Helios render probe</h1>
+<pre id="log">running…</pre>
+<div id="thumbs"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { SolarSystem } from '../src/solar/bodies.js';
+import { OrbitLines } from '../src/solar/orbits.js';
+import { AsteroidBelt } from '../src/solar/belt.js';
+import { createStarfield } from '../src/render/starfield.js';
+import { julianDate } from '../src/solar/kepler.js';
+const lines = [];
+const say = (cls, msg) => lines.push(`<span class="${cls}">${msg}</span>`);
+const flush = () => { document.getElementById('log').innerHTML = lines.join('\n'); };
+
+// three reports shader compile failures through console.error rather than by
+// throwing, so capture them or a broken shader looks like an empty scene.
+const captured = [];
+for (const k of ['error', 'warn']) {
+  const orig = console[k].bind(console);
+  console[k] = (...a) => { captured.push(`[${k}] ${a.map(String).join(' ')}`); orig(...a); };
+}
+
+try {
+    say('', `three r${THREE.REVISION}`);
+
+  const probe = document.createElement('canvas');
+  const gl2 = probe.getContext('webgl2');
+  say(gl2 ? 'pass' : 'fail', `webgl2 context: ${gl2 ? 'OK' : 'UNAVAILABLE'}`);
+  if (gl2) {
+    const dbg = gl2.getExtension('WEBGL_debug_renderer_info');
+    say('', `  renderer: ${dbg ? gl2.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl2.getParameter(gl2.RENDERER)}`);
+  }
+
+        
+  const W = 260, H = 180;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const renderer = new THREE.WebGLRenderer({
+    canvas, antialias: false, logarithmicDepthBuffer: true, preserveDrawingBuffer: true,
+  });
+  renderer.setSize(W, H, false);
+  renderer.setClearColor(0x000000, 1);
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  say('pass', `renderer created · logDepth capability = ${renderer.capabilities.logarithmicDepthBuffer}`);
+
+  const scene = new THREE.Scene();
+  const system = new SolarSystem();
+  scene.add(system.root);
+  const orbits = new OrbitLines(system);
+  scene.add(orbits.group);
+  const belt = new AsteroidBelt();
+  scene.add(belt.points);
+  const stars = createStarfield(4000, 5e8);
+  scene.add(stars);
+
+  const camera = new THREE.PerspectiveCamera(55, W / H, 0.1, 1e10);
+  const jd = julianDate(new Date('2026-06-01T00:00:00Z'));
+  system.updatePositions(jd);
+
+  const res = new THREE.Vector2(W, H);
+  const opts = { showMarkers: true, realisticLight: false, exaggeration: 1, time: 0 };
+
+  const buf = new Uint8Array(W * H * 4);
+  function shoot(name, camPos, lookAt) {
+    camera.position.copy(camPos);
+    camera.lookAt(lookAt);
+    camera.updateMatrixWorld(true);
+    stars.position.copy(camera.position);
+    system.updateAppearance(camera, res, opts);
+    orbits.update(jd, camera.position);
+    renderer.render(scene, camera);
+
+    const gl = renderer.getContext();
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    let lit = 0, max = 0, sum = 0;
+    for (let i = 0; i < buf.length; i += 4) {
+      const v = Math.max(buf[i], buf[i + 1], buf[i + 2]);
+      if (v > 8) lit++;
+      if (v > max) max = v;
+      sum += v;
+    }
+    const pct = (100 * lit / (W * H)).toFixed(1);
+    say(lit > 0 ? 'pass' : 'fail',
+      `${name.padEnd(26)} lit ${String(lit).padStart(6)} px (${pct.padStart(5)}%)  peak ${String(max).padStart(3)}  mean ${(sum / (W * H)).toFixed(1)}`);
+
+    const thumb = document.createElement('canvas');
+    thumb.width = W; thumb.height = H;
+    thumb.getContext('2d').drawImage(canvas, 0, 0);
+    thumb.title = name;
+    document.getElementById('thumbs').appendChild(thumb);
+  }
+
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const sun = system.byId.get('sun');
+  const earth = system.byId.get('earth');
+  const saturn = system.byId.get('saturn');
+  const jupiter = system.byId.get('jupiter');
+
+  shoot('wide: whole system', V(0, 3e7, 4e8), sun.worldPos);
+  shoot('Sun close up', sun.worldPos.clone().add(V(0, 3e5, 2.2e6)), sun.worldPos);
+  shoot('Earth close up', earth.worldPos.clone().add(V(1.2e4, 4e3, 1.2e4)), earth.worldPos);
+  shoot('Saturn + rings', saturn.worldPos.clone().add(V(3.4e5, 9e4, 2.4e5)), saturn.worldPos);
+  shoot('Jupiter + moons', jupiter.worldPos.clone().add(V(1.6e6, 1.6e6, 3e6)), jupiter.worldPos);
+  belt.update(jd);
+  shoot('asteroid belt, from above', V(0, 1.55e9, 0.35e9), sun.worldPos);
+  shoot('inside the belt', V(2.7 * 149597870.7, 0.04 * 149597870.7, 0),
+        V(0, 0.04 * 149597870.7, -1e9));
+  shoot('starfield only', V(1e12, 0, 0), V(1e12, 0, -1));
+
+  say('', '');
+  say(captured.length ? 'fail' : 'pass',
+      captured.length ? `${captured.length} console error(s)/warning(s):` : 'no console errors or warnings');
+  for (const c of captured) say('warn', '  ' + c.slice(0, 900));
+
+} catch (e) {
+  say('fail', 'THREW: ' + ((e && e.stack) || e));
+}
+flush();
+</script>
+</body>
+</html>

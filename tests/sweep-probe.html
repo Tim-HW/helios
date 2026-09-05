@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><title>Helios sweep probe</title>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.js" } }</script>
+<style>
+ body{background:#0a0d14;color:#dbe4f0;font:12px/1.45 ui-monospace,Menlo,monospace;padding:16px}
+ .pass{color:#7ddc9a}.fail{color:#ff8a70}.dim{color:#8394ab}
+ pre{white-space:pre-wrap;margin:0}
+</style>
+</head>
+<body>
+<h1 style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#8394ab">
+Sweep probe — where does a body stop drawing?</h1>
+<pre id="log">running…</pre>
+<script type="module">
+import * as THREE from 'three';
+import { SolarSystem } from '../src/solar/bodies.js';
+import { julianDate } from '../src/solar/kepler.js';
+
+const L = [];
+const say = (c, m) => { L.push(`<span class="${c}">${m}</span>`);
+  document.getElementById('log').innerHTML = L.join('\n'); };
+const captured = [];
+for (const k of ['error', 'warn']) {
+  const o = console[k].bind(console);
+  console[k] = (...a) => { captured.push(`[${k}] ${a.map(String).join(' ')}`); o(...a); };
+}
+
+try {
+  const W = 640, H = 400;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const renderer = new THREE.WebGLRenderer({
+    canvas, antialias: false, logarithmicDepthBuffer: true, preserveDrawingBuffer: true });
+  renderer.setSize(W, H, false);
+  renderer.setClearColor(0x000000, 1);
+  renderer.toneMapping = THREE.NeutralToneMapping;
+
+  const scene = new THREE.Scene();
+  const system = new SolarSystem();
+  scene.add(system.root);
+  system.updatePositions(julianDate(new Date()));
+
+  const cam = new THREE.PerspectiveCamera(55, W / H, 0.1, 1e10);
+  const res = new THREE.Vector2(W, H);
+  const buf = new Uint8Array(W * H * 4);
+
+  function litAt(b, mult, fov, exag) {
+    system.setExaggeration(exag);
+    cam.fov = fov; cam.updateProjectionMatrix();
+    const sd = b.worldPos.clone().negate().normalize();
+    const sv = new THREE.Vector3(0, 1, 0).cross(sd).normalize();
+    if (sv.lengthSq() < 0.5) sv.set(1, 0, 0);
+    const dv = sd.clone().multiplyScalar(0.5).add(sv.multiplyScalar(0.85)).normalize();
+    cam.position.copy(b.worldPos).addScaledVector(dv, b.renderRadius * mult);
+    cam.lookAt(b.worldPos);
+    cam.updateMatrixWorld(true);
+    system.updateAppearance(cam, res, { showMarkers: false, realisticLight: false,
+                                        exaggeration: exag, time: 0 });
+    renderer.render(scene, cam);
+    const gl = renderer.getContext();
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    let lit = 0;
+    for (let i = 0; i < buf.length; i += 4)
+      if (Math.max(buf[i], buf[i + 1], buf[i + 2]) > 12) lit++;
+    return lit;
+  }
+
+  const ids = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'io', 'ceres'];
+  const mults = [200, 60, 20, 8, 4.2, 2.5, 1.5, 1.1, 1.02, 1.001];
+
+  say('dim', 'lit pixels vs camera distance in body radii (exaggeration 1, fov 55)');
+  say('dim', 'body      ' + mults.map((m) => String(m).padStart(8)).join(''));
+  for (const id of ids) {
+    const b = system.byId.get(id);
+    const row = mults.map((m) => litAt(b, m, 55, 1));
+    const bad = row.some((v, i) => v < 50 && mults[i] >= 1.02);
+    say(bad ? 'fail' : 'pass',
+      b.def.name.padEnd(10) + row.map((v) => String(v).padStart(8)).join(''));
+  }
+
+  say('', '');
+  say('dim', 'same, but with the size-exaggeration slider pushed up (x50)');
+  say('dim', 'body      ' + mults.map((m) => String(m).padStart(8)).join(''));
+  for (const id of ['mercury', 'earth', 'moon', 'venus']) {
+    const b = system.byId.get(id);
+    const row = mults.map((m) => litAt(b, m, 55, 50));
+    say('dim', b.def.name.padEnd(10) + row.map((v) => String(v).padStart(8)).join(''));
+  }
+  system.setExaggeration(1);
+
+  say('', '');
+  say('dim', 'zoom sweep at 4.2 radii (field of view in degrees)');
+  const fovs = [90, 55, 20, 6, 2, 0.5, 0.05];
+  say('dim', 'body      ' + fovs.map((f) => String(f).padStart(8)).join(''));
+  for (const id of ['mercury', 'earth', 'moon', 'venus', 'jupiter']) {
+    const b = system.byId.get(id);
+    const row = fovs.map((f) => litAt(b, 4.2, f, 1));
+    const bad = row.some((v) => v < 50);
+    say(bad ? 'fail' : 'pass',
+      b.def.name.padEnd(10) + row.map((v) => String(v).padStart(8)).join(''));
+  }
+
+  say('', '');
+  say(captured.length ? 'fail' : 'pass',
+      captured.length ? `${captured.length} console message(s):` : 'no console errors or warnings');
+  for (const c of captured) say('fail', '  ' + c.slice(0, 700));
+  say('pass', 'PROBE COMPLETE');
+} catch (e) {
+  say('fail', 'THREW: ' + (e?.stack || e));
+}
+</script>
+</body>
+</html>

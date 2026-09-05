@@ -1,0 +1,22 @@
+# Everything that must not reach a public image.
+.git
+.probe
+.shots
+.verify
+tests
+*.md
+!CREDITS.md
+serve.py
+serve.sh
+Dockerfile
+.dockerignore
+# docker/nginx.conf must stay in the build context (it is COPYd to
+# /etc/nginx/conf.d), so the directory is not ignored — nothing copies it
+# into the served root.
+
+# The 320 MB of source models these lines used to exclude were deleted from the
+# repository on 2026-09-05: their textures had already been extracted into
+# assets/textures, and nothing loaded the originals. Their license.txt files
+# were kept, in assets/licenses/, because they are the attribution evidence for
+# textures that ARE shipped. assets/ is now ~54 MB and every file in it is
+# either loaded by the app or a licence. See CREDITS.md.

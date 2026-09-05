@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Helios — the solar system at true scale</title>
+
+<!-- three.js is vendored under ./vendor so the whole app runs offline.
+     three.module.js pulls in ./three.core.js by relative path on its own. -->
+<script type="importmap">
+{ "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/"
+  } }
+</script>
+
+<style>
+  :root {
+    --bg: #05070c;
+    --panel: rgba(10, 14, 22, 0.86);
+    --edge: rgba(150, 175, 210, 0.16);
+    --ink: #dbe4f0;
+    --dim: #8394ab;
+    --accent: #ffcc73;
+    --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  body { font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+
+  .panel {
+    position: fixed;
+    background: var(--panel);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12px;
+    line-height: 1.5;
+    pointer-events: auto;
+  }
+
+  /* ---- clock, top left ---- */
+  #clock { top: 14px; left: 14px; min-width: 262px; }
+  #brand {
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--dim); margin-bottom: 8px;
+  }
+  #date { font-family: var(--mono); font-size: 15px; letter-spacing: 0.01em; }
+  #warp-text { color: var(--dim); font-family: var(--mono); margin-top: 2px; }
+  #warp { width: 100%; margin: 10px 0 6px; accent-color: var(--accent); }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  button {
+    font: inherit; font-size: 11px; color: var(--ink);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--edge); border-radius: 6px;
+    padding: 4px 9px; cursor: pointer;
+  }
+  button:hover { background: rgba(255,255,255,0.11); }
+  button.on { background: var(--accent); color: #16120a; border-color: var(--accent); }
+
+  /* ---- readouts, bottom left ---- */
+  #readout { bottom: 14px; left: 14px; min-width: 262px; }
+  #readout h2 {
+    margin: 0 0 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.01em;
+  }
+  #readout .note {
+    color: var(--dim); font-style: italic; margin-bottom: 8px; font-size: 11.5px;
+  }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; margin: 0; }
+  dt { color: var(--dim); }
+  dd { margin: 0; font-family: var(--mono); text-align: right; }
+
+  /* ---- sidebar, right ----
+     One panel rather than two stacked ones. The previous layout let the list
+     grow into the options panel below it, which quietly hid Saturn onwards and
+     the whole viewpoints section on a 720-tall window: the panels could not
+     collide before, and now they cannot by construction. */
+  #sidebar {
+    top: 14px; right: 14px; bottom: 14px; width: 212px;
+    padding: 4px 0; overflow-y: auto; overscroll-behavior: contain;
+    display: flex; flex-direction: column;
+  }
+  #sidebar details { border-bottom: 1px solid var(--edge); flex: none; }
+  #sidebar details:last-of-type { border-bottom: none; }
+  #sidebar summary {
+    padding: 9px 14px; cursor: pointer; list-style: none;
+    font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--dim); font-weight: 500; user-select: none;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  #sidebar summary::-webkit-details-marker { display: none; }
+  #sidebar summary::after { content: '−'; font-size: 13px; color: var(--dim); }
+  #sidebar details:not([open]) summary::after { content: '+'; }
+  #sidebar summary:hover { color: var(--ink); }
+  #sidebar details > *:not(summary) { padding: 0 10px 10px; }
+  /* The destination list is the only thing allowed to be long; it scrolls
+     inside its own section so the sections below stay reachable. */
+  .scroller { max-height: 38vh; overflow-y: auto; overscroll-behavior: contain; }
+  .hint { color: var(--dim); font-size: 10.5px; line-height: 1.45; margin: 6px 0 0; }
+  .hint a { color: var(--dim); }
+
+  .target {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 4px 7px; margin-bottom: 2px; text-align: left; font-size: 12px;
+    background: none; border: 1px solid transparent;
+  }
+  .target:hover { background: rgba(255,255,255,0.08); }
+  .target.active { border-color: var(--accent); color: var(--accent); }
+  .target .swatch { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .target.moon { padding-left: 20px; font-size: 11.5px; color: var(--dim); }
+  .target.moon:hover, .target.moon.active { color: var(--ink); }
+  .target .when {
+    margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: var(--dim);
+  }
+
+  .toggle { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+  .toggle span { font-size: 11.5px; }
+  #exagg-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--edge); }
+  #exagg { width: 100%; accent-color: #e0674f; }
+  #exagg-warn {
+    display: none; color: #ffb4a0; font-size: 10.5px; line-height: 1.35; margin-top: 4px;
+  }
+  #exagg-warn.show { display: block; }
+
+  /* ---- date entry ---- */
+  #date-row { margin-top: 6px; }
+  #date-input {
+    flex: 1; min-width: 0; font: inherit; font-family: var(--mono); font-size: 11px;
+    color: var(--ink); background: rgba(255,255,255,0.05);
+    border: 1px solid var(--edge); border-radius: 6px; padding: 4px 7px;
+  }
+  #date-input::placeholder { color: var(--dim); }
+  #date-input.bad { border-color: #ff8a70; }
+
+  /* ---- scale bar, bottom centre ---- */
+  #scale { bottom: 16px; left: 50%; transform: translateX(-50%); padding: 8px 12px; }
+  #scale-bar {
+    height: 6px; border: 1px solid var(--ink); border-top: none;
+    width: 160px; margin-bottom: 4px;
+  }
+  #scale-text { font-family: var(--mono); font-size: 11px; text-align: center; }
+
+  /* ---- 3D labels ---- */
+  #labels { position: fixed; inset: 0; pointer-events: none; }
+  .label {
+    position: absolute; top: 0; left: 0;
+    padding: 1px 5px 1px 12px; margin: -9px 0 0 9px;
+    background: none; border: none; text-align: left;
+    font-size: 11px; letter-spacing: 0.03em; white-space: nowrap;
+    color: var(--ink); text-shadow: 0 0 6px #000, 0 0 3px #000;
+    pointer-events: auto; cursor: pointer;
+  }
+  .label:hover { background: none; color: var(--accent); }
+  .label-dist { color: var(--dim); margin-left: 7px; font-family: var(--mono); font-size: 10px; }
+  /* Minor planets are real destinations but shouldn't shout over the planets. */
+  .label-minor { font-size: 10px; opacity: 0.72; }
+  .label-minor .label-dist { font-size: 9px; }
+
+  /* ---- help ---- */
+  #help {
+    top: 14px; left: 50%; transform: translateX(-50%);
+    text-align: center; color: var(--dim); font-size: 11.5px; max-width: 460px;
+  }
+  #help b { color: var(--ink); font-weight: 600; }
+  #help .close { position: absolute; top: 4px; right: 6px; border: none; background: none; padding: 2px 5px; }
+  #help.hidden { display: none; }
+
+  #boot {
+    position: fixed; inset: 0; display: grid; place-content: center; text-align: center;
+    background: var(--bg); color: var(--dim); font-size: 13px; z-index: 50;
+  }
+  #boot.hidden { display: none; }
+  #boot .err { color: #ff9f8c; font-family: var(--mono); max-width: 640px; text-align: left;
+               white-space: pre-wrap; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<canvas id="view"></canvas>
+<div id="labels"></div>
+
+<div id="clock" class="panel">
+  <div id="brand">Helios · true scale</div>
+  <div id="date">—</div>
+  <div id="warp-text">—</div>
+  <input id="warp" type="range" min="0" max="7" step="0.01" value="0">
+  <div class="row">
+    <button id="btn-pause">Pause</button>
+    <button id="btn-reverse">Reverse</button>
+    <button id="btn-now">Now</button>
+    <button id="btn-help" title="Show the controls">?</button>
+  </div>
+  <div class="row" id="date-row">
+    <input id="date-input" type="text" spellcheck="false"
+           placeholder="YYYY-MM-DD HH:MM (UTC)" aria-label="Jump to a date">
+    <button id="btn-goto-date">Go</button>
+  </div>
+</div>
+
+<div id="readout" class="panel">
+  <h2 id="focus-name">Free flight</h2>
+  <div class="note" id="focus-note"></div>
+  <dl>
+    <dt>Distance</dt><dd id="r-distance">—</dd>
+    <dt>Altitude</dt><dd id="r-altitude">—</dd>
+    <dt>Light travel</dt><dd id="r-light">—</dd>
+    <dt>Apparent size</dt><dd id="r-angular">—</dd>
+    <dt>Diameter</dt><dd id="r-diameter">—</dd>
+    <dt>Sunlight</dt><dd id="r-sun">—</dd>
+    <dt>Your speed</dt><dd id="r-speed">—</dd>
+    <dt>Field of view</dt><dd id="r-fov">—</dd>
+    <dt>Nearest rock</dt><dd id="r-rock">—</dd>
+  </dl>
+</div>
+
+<aside id="sidebar" class="panel">
+  <details open>
+    <summary>Destinations</summary>
+    <div id="target-list" class="scroller"></div>
+  </details>
+  <details open>
+    <summary>Viewpoints</summary>
+    <div id="preset-list"></div>
+  </details>
+  <details open>
+    <summary>Moments</summary>
+    <div id="moment-list"></div>
+    <p class="hint">Dates this model actually reproduces — the shadows and
+    alignments are computed, not staged.</p>
+  </details>
+  <details open>
+    <summary>Show</summary>
+    <label class="toggle"><span>Orbit paths</span><input type="checkbox" id="t-orbits" checked></label>
+    <label class="toggle"><span>Labels</span><input type="checkbox" id="t-labels" checked></label>
+    <label class="toggle"><span>Markers</span><input type="checkbox" id="t-markers" checked></label>
+    <label class="toggle"><span>Asteroid belt</span><input type="checkbox" id="t-belt" checked></label>
+    <label class="toggle"><span>Real sunlight falloff</span><input type="checkbox" id="t-light"></label>
+    <div id="exagg-row">
+      <div class="toggle"><span>Exaggerate sizes</span><span id="exagg-val">off</span></div>
+      <input id="exagg" type="range" min="0" max="2" step="0.01" value="0">
+      <div id="exagg-warn" class="show">Sizes are no longer true — distances, orbits and every
+      readout still are. Past about 60× the Sun starts to swallow Mercury’s orbit.</div>
+    </div>
+  </details>
+  <details>
+    <summary>Credits</summary>
+      <p class="hint">Surface maps: Jupiter by
+      <a href="https://sketchfab.com/ShadyTex4u" target="_blank" rel="noopener noreferrer">Shady Tex</a>,
+      Mercury by <a href="https://sketchfab.com/shooter24994" target="_blank" rel="noopener noreferrer">Akshat</a>,
+      Enceladus / Mimas / Miranda by
+      <a href="https://sketchfab.com/Nestaeric" target="_blank" rel="noopener noreferrer">Nestaeric</a>,
+      Sun / Venus / Earth by
+      <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener noreferrer">Solar System Scope</a>.
+      Spacecraft: this work is based on
+      <a href="https://sketchfab.com/3d-models/jwst-james-webb-space-telescope-6c92c08a672640afb58ee44d248fd0fe" target="_blank" rel="noopener noreferrer">&ldquo;JWST (james webb space telescope)&rdquo;</a>
+      by <a href="https://sketchfab.com/paul_sketch" target="_blank" rel="noopener noreferrer">Paul</a>.
+      All of the above are
+      <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC-BY-4.0</a>.
+      The ISS model’s author is not yet identified &mdash; see CREDITS.md.
+      Positions from JPL. Every other surface is procedural.</p>
+  </details>
+</aside>
+
+<div id="scale" class="panel">
+  <div id="scale-bar"></div>
+  <div id="scale-text">—</div>
+</div>
+
+<div id="help" class="panel">
+  <button class="close" id="help-close">✕</button>
+  <b>Drag</b> to look · <b>W A S D</b> to fly · <b>R / F</b> up &amp; down ·
+  <b>Shift</b> to boost · <b>Scroll</b> for speed<br>
+  <b>Z / X</b> to zoom (<b>C</b> resets) · <b>Esc</b> releases focus<br>
+  Your speed scales with the empty space ahead of you, so the same controls work
+  on a moon’s surface and between planets.
+</div>
+
+<div id="boot">
+  <div>
+    <div>Loading Helios…</div>
+    <div class="err" id="boot-err"></div>
+  </div>
+</div>
+
+<script type="module">
+  window.addEventListener('error', (e) => {
+    const el = document.getElementById('boot-err');
+    document.getElementById('boot').classList.remove('hidden');
+    if (el) el.textContent = (e.error && e.error.stack) || e.message || String(e);
+  });
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

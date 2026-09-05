@@ -1,0 +1,43 @@
+services:
+  helios:
+    build: .
+    image: helios:latest
+    # Publish on loopback and put a TLS-terminating reverse proxy in front.
+    # Binding straight to 0.0.0.0 puts a plain-HTTP origin on the internet.
+    ports:
+      - "127.0.0.1:8080:8080"
+
+    read_only: true
+    # nginx runs as uid/gid 101 (the `nginx` user in nginx:alpine). A tmpfs
+    # defaults to root-owned 0755, so without these options the worker cannot
+    # write its temp files and the container fails to start under read_only.
+    tmpfs:
+      - /tmp:uid=101,gid=101,mode=1777
+      - /var/cache/nginx:uid=101,gid=101,mode=0700
+      - /var/run:uid=101,gid=101,mode=0755
+
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+    # A static file server has no reason to grow; a cap turns a traffic spike
+    # into slow responses rather than an OOM on the host.
+    mem_limit: 256m
+    pids_limit: 128
+
+    # The default json-file driver has no size limit, so on a long-running
+    # public site the access log grows until the disk is full. Note that it
+    # records client IP addresses: if that matters where this is deployed,
+    # `access_log off;` in the nginx config is the switch.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s

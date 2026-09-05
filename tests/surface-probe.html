@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Helios surface probe</title>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.js" } }
+</script>
+<style>
+  body{background:#0a0d14;color:#dbe4f0;font:12px/1.5 ui-monospace,Menlo,monospace;padding:16px}
+  .pass{color:#7ddc9a}.fail{color:#ff8a70}.dim{color:#8394ab}
+  h1{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#8394ab}
+  figure{display:inline-block;margin:0 8px 8px 0}
+  figcaption{color:#8394ab;font-size:10px;text-align:center;padding-top:3px}
+  canvas{border:1px solid #2a3140;display:block}
+  pre{white-space:pre-wrap;margin:0 0 8px}
+</style>
+</head>
+<body>
+<h1>Helios surface probe</h1>
+<pre id="log">running…</pre>
+<div id="out"></div>
+<script type="module">
+import * as THREE from 'three';
+import { SolarSystem } from '../src/solar/bodies.js';
+import { julianDate } from '../src/solar/kepler.js';
+
+const L = [];
+const say = (c, m) => { L.push(`<span class="${c}">${m}</span>`);
+  document.getElementById('log').innerHTML = L.join('\n'); };
+const captured = [];
+for (const k of ['error', 'warn']) {
+  const o = console[k].bind(console);
+  console[k] = (...a) => { captured.push(`[${k}] ${a.map(String).join(' ')}`); o(...a); };
+}
+
+try {
+  const S = 330;
+  const canvas = document.createElement('canvas');
+  canvas.width = S; canvas.height = S;
+  const renderer = new THREE.WebGLRenderer({
+    canvas, antialias: true, logarithmicDepthBuffer: true, preserveDrawingBuffer: true });
+  renderer.setSize(S, S, false);
+  renderer.setClearColor(0x000000, 1);
+  renderer.toneMapping = THREE.NeutralToneMapping;
+
+  const scene = new THREE.Scene();
+  const system = new SolarSystem();
+  scene.add(system.root);
+  const jd = julianDate(new Date('2026-06-01T00:00:00Z'));
+  system.updatePositions(jd);
+
+  const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 1e10);
+  const res = new THREE.Vector2(S, S);
+  const opts = { showMarkers: false, realisticLight: false, exaggeration: 1, time: 0 };
+  const buf = new Uint8Array(S * S * 4);
+  const tmp = new THREE.Vector3();
+
+  // Place the camera so the body fills a given fraction of the frame, viewed
+  // from a three-quarter angle where the terminator crosses the disc -- which
+  // is the only place relief is actually visible.
+  // `spec` is either {fill} -- the fraction of the frame the disc covers -- or
+  // {alt} in km above the surface, which is the only sane way to say "close".
+  function view(id, spec, label) {
+    const b = system.byId.get(id);
+    const R = b.def.radius;
+    const dist = spec.alt !== undefined
+      ? R + spec.alt
+      : R / (spec.fill * Math.tan(cam.fov * Math.PI / 360));
+
+    // Build a frame from the body's sun direction so the lit side is consistent.
+    const sunDir = tmp.copy(b.worldPos).negate().normalize().clone();
+    const up = new THREE.Vector3(0, 1, 0);
+    const side = new THREE.Vector3().crossVectors(up, sunDir).normalize();
+    if (side.lengthSq() < 0.5) side.set(1, 0, 0);
+    // `phase` is cos of the angle between the view and the Sun: 0.55 is a
+    // gibbous disc, 0.12 is raking light where relief actually shows.
+    const ph = spec.phase ?? 0.55;
+    const dir = sunDir.clone().multiplyScalar(ph)
+      .add(side.multiplyScalar(Math.sqrt(Math.max(1 - ph * ph - 0.05, 0.01))))
+      .add(up.clone().multiplyScalar(0.22)).normalize();
+
+    cam.position.copy(b.worldPos).addScaledVector(dir, dist);
+    cam.lookAt(b.worldPos);
+    cam.updateMatrixWorld(true);
+    system.updateAppearance(cam, res, opts);
+    if (spec.after) spec.after();     // overrides applied after the per-frame update
+    renderer.render(scene, cam);
+
+    const gl = renderer.getContext();
+    gl.readPixels(0, 0, S, S, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+
+    // Contrast within the lit disc is the signal that relief is being shaded:
+    // a painted sphere varies smoothly, a rugged one has local light and dark.
+    let lit = 0, sum = 0, sumSq = 0;
+    for (let i = 0; i < buf.length; i += 4) {
+      const v = (buf[i] + buf[i + 1] + buf[i + 2]) / 3;
+      if (v > 24) { lit++; sum += v; sumSq += v * v; }
+    }
+    const mean = sum / Math.max(lit, 1);
+    const sd = Math.sqrt(Math.max(sumSq / Math.max(lit, 1) - mean * mean, 0));
+    // Centre pixel and the sub-camera illumination, so a dark frame can be
+    // told apart from a frame pointed at the night side.
+    const ci = ((S >> 1) * S + (S >> 1)) * 4;
+    const centre = `${buf[ci]},${buf[ci + 1]},${buf[ci + 2]}`;
+    const ndl = dir.dot(sunDir).toFixed(2);
+    // What the shader actually thinks, versus what the probe intended: the
+    // sub-camera surface direction and the sun direction, both in body space.
+    const u = b.mesh.material.uniforms;
+    const shaderSun = u.uSunDir.value.clone();
+    const subCamLocal = b.worldPos.clone().addScaledVector(dir, R);
+    b.spinFrame.worldToLocal(subCamLocal);
+    subCamLocal.normalize();
+    const shaderNdl = subCamLocal.dot(shaderSun).toFixed(2);
+    say(lit > 200 ? 'pass' : 'fail',
+      `${label.padEnd(24)} lit ${String(lit).padStart(6)}  mean ${mean.toFixed(1).padStart(6)}`
+      + `  contrast ${(sd / Math.max(mean, 1)).toFixed(3)}  alt ${String(Math.round(dist - R)).padStart(7)} km`
+      + `  probe n·l ${ndl}  SHADER n·l ${shaderNdl}  centre ${centre}`);
+
+    const c = document.createElement('canvas');
+    c.width = S; c.height = S;
+    c.getContext('2d').drawImage(canvas, 0, 0);
+    const fig = document.createElement('figure');
+    fig.appendChild(c);
+    const cap = document.createElement('figcaption'); cap.textContent = label;
+    fig.appendChild(cap);
+    document.getElementById('out').appendChild(fig);
+  }
+
+  for (const [id, name] of [['moon','Moon'], ['mercury','Mercury'], ['mars','Mars'],
+                            ['earth','Earth'], ['io','Io'], ['europa','Europa'],
+                            ['ceres','Ceres'], ['jupiter','Jupiter'],
+                            ['venus','Venus'], ['titan','Titan'],
+                            ['neptune','Neptune'], ['saturn','Saturn']])
+    view(id, { fill: 0.85 }, `${name} — full disc`);
+
+  // Backlit. Looking at the night side with the Sun behind, an atmosphere
+  // should flare into a ring and an airless body should stay a black disc --
+  // the clearest single test of whether the air is doing anything.
+  view('earth', { fill: 0.72, phase: -0.85 }, 'Earth — backlit');
+  view('titan', { fill: 0.72, phase: -0.85 }, 'Titan — backlit');
+  view('venus', { fill: 0.72, phase: -0.85 }, 'Venus — backlit');
+  view('moon', { fill: 0.72, phase: -0.85 }, 'Moon — backlit (no air)');
+
+  // Descending. The detail band should keep resolving as altitude drops,
+  // instead of smoothing into mush.
+  view('moon', { alt: 400, phase: 0.15 }, 'Moon — 400 km, raking');
+  view('moon', { alt: 40, phase: 0.15 }, 'Moon — 40 km, raking');
+  view('moon', { alt: 4, phase: 0.15 }, 'Moon — 4 km, raking');
+  view('mars', { alt: 40, phase: 0.15 }, 'Mars — 40 km, raking');
+
+  // Isolate the shading terms: zero the bump, then zero the graze blend, and
+  // see which one is darkening the sub-camera point.
+  {
+    const m = system.byId.get('mars').mesh.material.uniforms;
+    const keepBump = m.uBumpScale.value, keepAmp = m.uDetailAmp.value;
+    view('mars', { fill: 0.85, after: () => { m.uBumpScale.value = 0; } },
+         'Mars — bump OFF');
+    view('mars', { fill: 0.85, after: () => { m.uDetailAmp.value = 0; } },
+         'Mars — detail band OFF');
+    m.uBumpScale.value = keepBump; m.uDetailAmp.value = keepAmp;
+  }
+
+  // --- cost -----------------------------------------------------------------
+  // Terrain normals cost three height samples per pixel, each several octaves
+  // of simplex noise, so a planet filling a 1080p screen is the worst case the
+  // app can actually produce. Measure it rather than hope.
+  {
+    const PW = 1600, PH = 900;
+    const pc = document.createElement('canvas');
+    pc.width = PW; pc.height = PH;
+    const pr = new THREE.WebGLRenderer({
+      canvas: pc, antialias: false, logarithmicDepthBuffer: true });
+    pr.setSize(PW, PH, false);
+    pr.setClearColor(0x000000, 1);
+    pr.toneMapping = THREE.NeutralToneMapping;
+    const pcam = new THREE.PerspectiveCamera(50, PW / PH, 0.1, 1e10);
+    const pres = new THREE.Vector2(PW, PH);
+
+    for (const [id, label, alt] of [['earth', 'Earth filling 1600x900', null],
+                                    ['moon', 'Moon filling 1600x900', null],
+                                    ['moon', 'Moon from 4 km up', 4]]) {
+      const b = system.byId.get(id);
+      const R = b.def.radius;
+      const d = alt === null ? R / (0.95 * Math.tan(pcam.fov * Math.PI / 360)) : R + alt;
+      const sd = b.worldPos.clone().negate().normalize();
+      const sv = new THREE.Vector3(0, 1, 0).cross(sd).normalize();
+      const dv = sd.clone().multiplyScalar(0.5).add(sv.multiplyScalar(0.85)).normalize();
+      pcam.position.copy(b.worldPos).addScaledVector(dv, d);
+      pcam.lookAt(b.worldPos);
+      pcam.updateMatrixWorld(true);
+      system.updateAppearance(pcam, pres, opts);
+
+      pr.render(scene, pcam);                     // warm up / compile
+      pr.getContext().finish();
+      const t0 = performance.now();
+      const N = 12;
+      for (let i = 0; i < N; i++) pr.render(scene, pcam);
+      pr.getContext().finish();
+      const ms = (performance.now() - t0) / N;
+      say(ms < 16.7 ? 'pass' : 'fail',
+        `${label.padEnd(30)} ${ms.toFixed(2)} ms/frame  (${(1000 / ms).toFixed(0)} fps)`);
+    }
+    pr.dispose();
+  }
+
+  say('', '');
+  say(captured.length ? 'fail' : 'pass',
+      captured.length ? `${captured.length} console message(s):` : 'no console errors or warnings');
+  for (const c of captured) say('fail', '  ' + c.slice(0, 600));
+  say('pass', 'PROBE COMPLETE');
+} catch (e) {
+  say('fail', 'THREW: ' + (e?.stack || e));
+}
+</script>
+</body>
+</html>

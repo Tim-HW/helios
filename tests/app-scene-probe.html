@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Helios app-scene probe</title>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.js" } }
+</script>
+<style>
+  body{background:#0a0d14;color:#dbe4f0;font:12px/1.5 ui-monospace,Menlo,monospace;padding:16px}
+  .pass{color:#7ddc9a}.fail{color:#ff8a70}
+  figure{display:inline-block;margin:0 8px 8px 0}
+  figcaption{color:#8394ab;font-size:10px;text-align:center;padding-top:3px}
+  canvas{border:1px solid #2a3140;display:block}
+  pre{white-space:pre-wrap;margin:0 0 8px}
+</style>
+</head>
+<body>
+<h1 style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#8394ab">
+App-scene probe — exactly what main.js builds</h1>
+<pre id="log">running…</pre>
+<div id="out"></div>
+<script type="module">
+import * as THREE from 'three';
+import { SolarSystem } from '../src/solar/bodies.js';
+import { OrbitLines } from '../src/solar/orbits.js';
+import { AsteroidBelt } from '../src/solar/belt.js';
+import { createStarfield } from '../src/render/starfield.js';
+import { FlyCamera } from '../src/camera/flycam.js';
+import { SimClock } from '../src/core/clock.js';
+
+const L = [];
+const say = (c, m) => { L.push(`<span class="${c}">${m}</span>`);
+  document.getElementById('log').innerHTML = L.join('\n'); };
+const captured = [];
+for (const k of ['error', 'warn']) {
+  const o = console[k].bind(console);
+  console[k] = (...a) => { captured.push(`[${k}] ${a.map(String).join(' ')}`); o(...a); };
+}
+
+try {
+  const W = 1600, H = 900;   // a real browser window, not a thumbnail
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const renderer = new THREE.WebGLRenderer({
+    canvas, antialias: true, logarithmicDepthBuffer: true, preserveDrawingBuffer: true });
+  renderer.setSize(W, H, false);
+  renderer.setClearColor(0x000000, 1);
+  renderer.toneMapping = THREE.NeutralToneMapping;
+
+  // Everything main.js assembles, in the same order.
+  const scene = new THREE.Scene();
+  const system = new SolarSystem();
+  scene.add(system.root);
+  const orbits = new OrbitLines(system);
+  scene.add(orbits.group);
+  const belt = new AsteroidBelt();
+  scene.add(belt.points);
+  const starfield = createStarfield();
+  scene.add(starfield);
+
+  const camera = new THREE.PerspectiveCamera(55, W / H, 0.1, 1e10);
+  const stub = { addEventListener() {}, setPointerCapture() {},
+                 hasPointerCapture() { return false; }, releasePointerCapture() {} };
+  const flycam = new FlyCamera(camera, system, stub);
+  const clock = new SimClock(new Date());
+  const options = { showOrbits: true, showLabels: true, showMarkers: true,
+                    showBelt: true, realisticLight: false, exaggeration: 1, time: 0 };
+  const resolution = new THREE.Vector2(W, H);
+
+  // main.js's step(), verbatim in structure.
+  function step(dt) {
+    options.time += dt;
+    clock.advance(dt);
+    system.updatePositions(clock.jd);
+    flycam.update(dt);
+    camera.updateMatrixWorld(true);
+    system.setExaggeration(options.exaggeration);
+    system.updateAppearance(camera, resolution, options);
+    orbits.update(clock.jd, camera.position);
+    belt.update(clock.jd);
+    starfield.position.copy(camera.position);
+    renderer.render(scene, camera);
+  }
+  step(0);
+  say('pass', 'scene built and first frame drawn');
+
+  const buf = new Uint8Array(W * H * 4);
+  function visit(id) {
+    const b = system.byId.get(id);
+    flycam.goTo(b);
+    for (let i = 0; i < 600 && flycam.travel; i++) step(1 / 60);
+    step(1 / 60);
+
+    const gl = renderer.getContext();
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    let lit = 0, peak = 0;
+    for (let i = 0; i < buf.length; i += 4) {
+      const v = Math.max(buf[i], buf[i + 1], buf[i + 2]);
+      if (v > 16) lit++; if (v > peak) peak = v;
+    }
+    const u = b.mesh.material.uniforms;
+    const dist = camera.position.distanceTo(b.worldPos);
+    say(lit > 300 ? 'pass' : 'fail',
+      `${b.def.name.padEnd(9)} lit ${String(lit).padStart(6)}  peak ${String(peak).padStart(3)}`
+      + `  dist ${(dist / b.def.radius).toFixed(2)} R`
+      + `  scale ${b.mesh.scale.x.toFixed(0)}`
+      + `  detailFreq ${u.uDetailFreq.value.toFixed(0)}`
+      + `  detailAmp ${u.uDetailAmp.value.toExponential(2)}`
+      + `  bump ${u.uBumpScale.value}`
+      + `  sun ${u.uSunDir.value.toArray().map((v) => v.toFixed(2)).join(',')}`);
+
+    const c = document.createElement('canvas');
+    c.width = W / 4; c.height = H / 4;
+    c.getContext('2d').drawImage(canvas, 0, 0, W / 4, H / 4);
+    const fig = document.createElement('figure');
+    fig.appendChild(c);
+    const cap = document.createElement('figcaption'); cap.textContent = b.def.name;
+    fig.appendChild(cap);
+    document.getElementById('out').appendChild(fig);
+  }
+
+  for (const id of ['mercury', 'earth', 'moon']) visit(id);
+
+  // The reported failure: with the size slider raised, the camera used to end
+  // up inside the enlarged mesh and the body vanished entirely.
+  options.exaggeration = 30;
+  system.setExaggeration(30);          // as the slider now does, immediately
+  say('dim', '--- with sizes exaggerated 30x ---');
+  for (const id of ['mercury', 'earth', 'moon', 'venus']) visit(id);
+  options.exaggeration = 1;
+
+  say('', '');
+  say(captured.length ? 'fail' : 'pass',
+      captured.length ? `${captured.length} console message(s):` : 'no console errors or warnings');
+  for (const c of captured) say('fail', '  ' + c.slice(0, 700));
+  say('pass', 'PROBE COMPLETE');
+} catch (e) {
+  say('fail', 'THREW: ' + (e?.stack || e));
+}
+</script>
+</body>
+</html>

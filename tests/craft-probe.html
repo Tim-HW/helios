@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Craft probe</title>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.js", "three/addons/": "../vendor/" } }
+</script>
+<style>
+ body{background:#0a0d14;color:#dbe4f0;font:12px/1.5 ui-monospace,Menlo,monospace;padding:14px}
+ .pass{color:#7ddc9a}.fail{color:#ff8a70}.dim{color:#8394ab}
+ figure{display:inline-block;margin:0 10px 10px 0}
+ figcaption{color:#8394ab;font-size:10px;text-align:center}
+ canvas{border:1px solid #2a3140;display:block}
+ pre{white-space:pre-wrap;margin:0 0 8px}
+</style></head><body>
+<h1 style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#8394ab">
+Craft — the ISS in low orbit, James Webb at L2</h1>
+<pre id="log">running…</pre><div id="out"></div>
+<script>
+// Plain script, runs first: catch anything the module throws and get it out.
+window.rawPost = function rawPost(name, body) {
+  try { const x = new XMLHttpRequest(); x.open('POST', '/_probe/' + name, false); x.send(body); }
+  catch (e) {}
+};
+window.addEventListener('error', (e) => {
+  rawPost('craft.txt', `ERROR ${e.message}\n  ${e.filename}:${e.lineno}:${e.colno}\n`
+    + ((e.error && e.error.stack) || ''));
+  rawPost('craft.done', 'err');
+}, true);
+window.addEventListener('unhandledrejection', (e) => {
+  rawPost('craft.txt', 'REJECTED ' + ((e.reason && e.reason.stack) || e.reason));
+  rawPost('craft.done', 'rej');
+});
+rawPost('craft.stage', 'html parsed');
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { SolarSystem } from '../src/solar/bodies.js';
+import { Spacecraft } from '../src/solar/spacecraft.js';
+import { ISS, JWST } from '../src/solar/data.js';
+import { julianDate } from '../src/solar/kepler.js';
+import { postProbe, postCanvas } from './probe-io.js';
+
+window.rawPost('craft.stage', 'module imports resolved');
+const L=[]; const say=(c,m)=>{L.push(`<span class="${c}">${m}</span>`);
+  document.getElementById('log').innerHTML=L.join('\n');};
+const captured=[]; for(const k of ['error','warn']){const o=console[k].bind(console);
+  console[k]=(...a)=>{captured.push(`[${k}] ${a.map(String).join(' ')}`);o(...a);};}
+const finish=()=>{ postProbe('craft.txt', document.getElementById('log').textContent);
+  document.querySelectorAll('figure canvas').forEach((c,i)=>postCanvas(`craft-${i}.png`,c));
+  postProbe('craft.done','done'); };
+
+const S=440;
+const canvas=document.createElement('canvas'); canvas.width=S; canvas.height=S;
+const r=new THREE.WebGLRenderer({canvas,antialias:true,logarithmicDepthBuffer:true,
+  preserveDrawingBuffer:true});
+r.setSize(S,S,false); r.setClearColor(0x000000,1); r.toneMapping=THREE.NeutralToneMapping;
+const scene=new THREE.Scene();
+const system=new SolarSystem(); scene.add(system.root);
+const jd = julianDate(new Date('2026-09-05T12:00:00Z'));
+system.updatePositions(jd);
+const cam=new THREE.PerspectiveCamera(45,1,0.002,1e10);
+const res=new THREE.Vector2(S,S);
+const opts={showMarkers:true,realisticLight:false,exaggeration:1,time:0};
+const buf=new Uint8Array(S*S*4);
+
+const ONLY = new URLSearchParams(location.search).get('only');
+const defs = ONLY === 'iss' ? [ISS] : ONLY === 'jwst' ? [JWST] : [ISS, JWST];
+window.rawPost('craft.stage', 'about to construct craft');
+const craft = defs.map((d) => new Spacecraft(system, scene, d));
+window.rawPost('craft.stage', 'craft constructed');
+for (const c of craft) { c.updatePosition(jd); c.ensureLoaded(); }
+window.rawPost('craft.stage', 'positions set, loading started');
+
+function shoot(label, rec, dist) {
+  const c = rec.worldPos;
+  const out = c.clone().normalize();
+  const side = new THREE.Vector3(0,1,0).cross(out).normalize();
+  const dir = side.clone().multiplyScalar(0.75)
+    .add(out.clone().multiplyScalar(-0.45))
+    .add(new THREE.Vector3(0,0.35,0)).normalize();
+  cam.position.copy(c).addScaledVector(dir, dist);
+  cam.lookAt(c); cam.updateMatrixWorld(true);
+  system.updateAppearance(cam,res,opts);
+  for (const cr of craft) cr.updateVisuals(cam.position);
+  r.render(scene,cam);
+  const gl=r.getContext(); gl.readPixels(0,0,S,S,gl.RGBA,gl.UNSIGNED_BYTE,buf);
+  let lit=0,peak=0;
+  for(let i=0;i<buf.length;i+=4){const v=Math.max(buf[i],buf[i+1],buf[i+2]);
+    if(v>18)lit++; if(v>peak)peak=v;}
+  say(lit>150?'pass':'fail', `${label.padEnd(34)} ${String(lit).padStart(6)} lit px  peak ${peak}`);
+  const cc=document.createElement('canvas'); cc.width=S; cc.height=S;
+  cc.getContext('2d').drawImage(canvas,0,0);
+  const f=document.createElement('figure'); f.appendChild(cc);
+  const cap=document.createElement('figcaption'); cap.textContent=label;
+  f.appendChild(cap); document.getElementById('out').appendChild(f);
+}
+
+const t0=performance.now();
+const go=()=>{
+  if (craft.some(c=>!c.loaded) && performance.now()-t0 < 60000) return setTimeout(go,150);
+  try {
+    for (const c of craft) {
+      const rec = system.byId.get(c.def.id);
+      say(c.loaded?'pass':'fail', `${c.def.name}: model ${c.loaded?'loaded':'FAILED'}`);
+      if (!c.loaded) continue;
+      const b=new THREE.Box3().setFromObject(c.model);
+      const span=Math.max(...b.getSize(new THREE.Vector3()).toArray());
+      say(Math.abs(span-c.def.modelSpan) < c.def.modelSpan*0.05 ? 'pass':'fail',
+        `  span ${(span*1000).toFixed(1)} m (real ${(c.def.modelSpan*1000).toFixed(1)} m)`);
+      const earth = system.byId.get('earth');
+      const d = rec.worldPos.distanceTo(earth.worldPos);
+      say('dim', `  ${d < 1e5 ? (d).toFixed(0)+' km' : (d/1e6).toFixed(2)+' million km'}`
+        + ` from Earth  (${(d/384400).toFixed(2)}x the Moon)`);
+    }
+    for (const c of craft) {
+      const rec = system.byId.get(c.def.id);
+      const near = c.def.modelSpan * 3, far = c.def.modelSpan * 25;
+      shoot(`${c.def.name} at ${(near*1000).toFixed(0)} m`, rec, near);
+      shoot(`${c.def.name} at ${(far*1000).toFixed(0)} m`, rec, far);
+    }
+    say('','');
+    say(captured.length?'fail':'pass',
+      captured.length?`${captured.length} console message(s):`:'no console errors or warnings');
+    for(const c of captured) say('fail','  '+c.slice(0,300));
+    say('pass','PROBE COMPLETE');
+  } catch(e){ say('fail','THREW: '+(e?.stack||e)); }
+  finish();
+};
+go();
+</script></body></html>

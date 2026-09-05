@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Earth probe</title>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.js" } }</script>
+<style>
+ body{background:#0a0d14;color:#dbe4f0;font:12px/1.45 ui-monospace,Menlo,monospace;padding:14px}
+ .pass{color:#7ddc9a}.fail{color:#ff8a70}.dim{color:#8394ab}
+ figure{display:inline-block;margin:0 8px 8px 0}
+ figcaption{color:#8394ab;font-size:10px;text-align:center}
+ canvas{border:1px solid #2a3140;display:block}
+ pre{white-space:pre-wrap;margin:0 0 8px}
+</style></head>
+<body>
+<h1 style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#8394ab">
+Earth probe — surface vs cloud brightness</h1>
+<pre id="log">running…</pre><div id="out"></div>
+<script type="module">
+import * as THREE from 'three';
+import { SolarSystem } from '../src/solar/bodies.js';
+import { julianDate } from '../src/solar/kepler.js';
+
+const L = [];
+const say = (c, m) => { L.push(`<span class="${c}">${m}</span>`);
+  document.getElementById('log').innerHTML = L.join('\n'); };
+const captured = [];
+for (const k of ['error','warn']) { const o=console[k].bind(console);
+  console[k]=(...a)=>{captured.push(`[${k}] ${a.map(String).join(' ')}`);o(...a);}; }
+
+try {
+  const scene = new THREE.Scene();
+  const system = new SolarSystem();
+  scene.add(system.root);
+  system.updatePositions(julianDate(new Date()));
+  const earth = system.byId.get('earth');
+
+  // The user's framing: ~30,243 km from Earth's centre.
+  function shoot(W, H, ratio, label, hideClouds) {
+    const canvas = document.createElement('canvas');
+    const r = new THREE.WebGLRenderer({ canvas, antialias: true,
+      logarithmicDepthBuffer: true, preserveDrawingBuffer: true });
+    r.setPixelRatio(ratio);
+    r.setSize(W, H, false);
+    r.setClearColor(0x000000, 1);
+    r.toneMapping = THREE.NeutralToneMapping;
+
+    const cam = new THREE.PerspectiveCamera(55, W / H, 0.1, 1e10);
+    const sd = earth.worldPos.clone().negate().normalize();
+    const sv = new THREE.Vector3(0,1,0).cross(sd).normalize();
+    const dv = sd.clone().multiplyScalar(0.72).add(sv.multiplyScalar(0.65)).normalize();
+    cam.position.copy(earth.worldPos).addScaledVector(dv, 30243);
+    cam.lookAt(earth.worldPos);
+    cam.updateMatrixWorld(true);
+    system.updateAppearance(cam, new THREE.Vector2(W, H),
+      { showMarkers:false, realisticLight:false, exaggeration:1, time:0 });
+    if (earth.clouds) earth.clouds.visible = !hideClouds;
+    r.render(scene, cam);
+    earth.clouds.visible = true;
+
+    const gl = r.getContext();
+    const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+    const buf = new Uint8Array(bw * bh * 4);
+    gl.readPixels(0, 0, bw, bh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    // Sample a disc-centre patch: that is the surface, well away from the limb.
+    let sum = 0, n = 0, blue = 0;
+    for (let y = bh * 0.42; y < bh * 0.58; y++)
+      for (let x = bw * 0.42; x < bw * 0.58; x++) {
+        const i = ((y | 0) * bw + (x | 0)) * 4;
+        sum += (buf[i] + buf[i+1] + buf[i+2]) / 3; n++;
+        if (buf[i+2] > buf[i]) blue++;
+      }
+    const mean = sum / n;
+    const u = earth.mesh.material.uniforms;
+    say(mean > 25 ? 'pass' : 'fail',
+      `${label.padEnd(34)} centre brightness ${mean.toFixed(1).padStart(6)}`
+      + `  bluish ${((100*blue/n)|0)}%  buffer ${bw}x${bh}`
+      + `  detailFreq ${u.uDetailFreq.value.toFixed(0)}`
+      + `  detailAmp ${u.uDetailAmp.value.toExponential(2)}`);
+
+    const c = document.createElement('canvas');
+    c.width = 300; c.height = Math.round(300 * H / W);
+    c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+    const f = document.createElement('figure'); f.appendChild(c);
+    const cap = document.createElement('figcaption'); cap.textContent = label;
+    f.appendChild(cap); document.getElementById('out').appendChild(f);
+    r.dispose();
+  }
+
+  for (const [W,H,ratio] of [[845,692,1],[845,692,2],[1280,720,1],[1920,1080,1],
+                             [1920,1080,2],[640,480,1],[2560,1440,1]])
+    shoot(W, H, ratio, `${W}x${H} @dpr${ratio}`, false);
+
+  shoot(845, 692, 1, '845x692 — clouds hidden', true);
+
+  say('', '');
+  say(captured.length ? 'fail':'pass',
+      captured.length ? `${captured.length} console message(s):` : 'no console errors or warnings');
+  for (const c of captured) say('fail','  '+c.slice(0,700));
+  say('pass','PROBE COMPLETE');
+} catch (e) { say('fail','THREW: '+(e?.stack||e)); }
+</script></body></html>
