@@ -59,6 +59,31 @@ system.updatePositions(jd);
 const res = new THREE.Vector2(W, H);
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
+// Maps now load only once a body is a few pixels across, which means the camera
+// has to be in place BEFORE the texture is even requested. So each shot aims
+// first, lets the fetch happen, and only then renders.
+async function aimAndShoot(name, camPos, lookAt, fov = 55, opts = {}, show = {}) {
+  camera.fov = fov;
+  camera.updateProjectionMatrix();
+  camera.position.copy(camPos);
+  camera.lookAt(lookAt);
+  camera.updateMatrixWorld(true);
+  system.updateAppearance(camera, res, { showMarkers: false, realisticLight: false,
+                                         exaggeration: 1, time: 0, ...opts });
+  await settle(8000);
+  return shoot(name, camPos, lookAt, fov, opts, show);
+}
+
+// Resolve when the loader goes quiet, or after ms, whichever is first.
+function settle(ms) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    THREE.DefaultLoadingManager.onLoad = finish;
+    setTimeout(finish, ms);
+  }).then(() => new Promise(r => setTimeout(r, 400)));
+}
+
 function shoot(name, camPos, lookAt, fov = 55, opts = {}, show = {}) {
   // Orbit lines and belt are user toggles in the app; a close-up with the lines
   // off is a real configuration, not a staged one.
@@ -126,17 +151,17 @@ function waitForTextures(ms) {
   const sunward = earth.worldPos.clone().negate().normalize();
   if (side.dot(sunward) < 0) side.negate();
   const mid = sep.clone().multiplyScalar(0.5);
-  shoot('earth-moon-gap',
+  await aimAndShoot('earth-moon-gap',
         earth.worldPos.clone().add(mid).add(side.multiplyScalar(sep.length() * 0.62)),
         earth.worldPos.clone().add(mid), 62,
         { showMarkers: false }, { lines: false, belt: false });
 
-  shoot('saturn-rings', saturn.worldPos.clone().add(V(3.4e5, 9e4, 2.4e5)), saturn.worldPos, 50,
+  await aimAndShoot('saturn-rings', saturn.worldPos.clone().add(V(3.4e5, 9e4, 2.4e5)), saturn.worldPos, 50,
         {}, { belt: false });
   // Close enough for the belts and the Red Spot to read, which needs roughly
   // three radii of standoff at this field of view.
   const jr = jupiter.renderRadius ?? jupiter.def.radius;
-  shoot('jupiter', jupiter.worldPos.clone().add(V(1, 0.22, 0.75).normalize().multiplyScalar(jr * 3.1)),
+  await aimAndShoot('jupiter', jupiter.worldPos.clone().add(V(1, 0.22, 0.75).normalize().multiplyScalar(jr * 3.1)),
         jupiter.worldPos, 50, {}, { lines: false, belt: false });
   // Stand on the sunward side, offset sideways for a three-quarter view: an
   // arbitrary offset lands on the night hemisphere about half the time, and a
@@ -144,7 +169,7 @@ function waitForTextures(ms) {
   const mr = mars.renderRadius ?? mars.def.radius;
   const marsSun = mars.worldPos.clone().negate().normalize();
   const marsSide = new THREE.Vector3(0, 1, 0).cross(marsSun).normalize();
-  shoot('mars',
+  await aimAndShoot('mars',
         mars.worldPos.clone().add(
           marsSun.clone().multiplyScalar(0.82)
             .add(marsSide.multiplyScalar(0.45))
@@ -152,9 +177,9 @@ function waitForTextures(ms) {
             .normalize().multiplyScalar(mr * 3.1)),
         mars.worldPos, 50, {}, { lines: false, belt: false });
 
-  shoot('earth-surface', earth.worldPos.clone().add(V(1.1e4, 3.5e3, 1.1e4)), earth.worldPos, 50,
+  await aimAndShoot('earth-surface', earth.worldPos.clone().add(V(1.1e4, 3.5e3, 1.1e4)), earth.worldPos, 50,
         {}, { lines: false, belt: false });
-  shoot('inner-system', V(0, 1.4e8, 3.6e8), sun.worldPos, 55, { showMarkers: true });
+  await aimAndShoot('inner-system', V(0, 1.4e8, 3.6e8), sun.worldPos, 55, { showMarkers: true });
 
   // The station: 44 MB of geometry, loaded only when something is within 200 km
   // of it, so the camera has to be put there first and the load waited out.
@@ -179,7 +204,7 @@ function waitForTextures(ms) {
   if (iss.loaded) {
     iss.updatePosition(jd);
     iss.updateVisuals(camPos);
-    shoot('iss', camPos, iss.record.worldPos, 50, {}, { lines: false, belt: false });
+    await aimAndShoot('iss', camPos, iss.record.worldPos, 50, {}, { lines: false, belt: false });
   }
 
   postProbe('shots-done.txt', log.join('\n'));

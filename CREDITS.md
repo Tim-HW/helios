@@ -13,7 +13,12 @@ here. Every one of these requires attribution.
 | Enceladus, Mimas | [Saturn](https://sketchfab.com/3d-models/saturn-c09a1970148c43ad99db134a9d6d00b5) | [Nestaeric](https://sketchfab.com/Nestaeric) | CC-BY-4.0 |
 | Miranda | [Uranus](https://sketchfab.com/3d-models/uranus-0009a69dbace44608c0bd09af9ba20db) | [NestaEric](https://sketchfab.com/Nestaeric) | CC-BY-4.0 |
 | Mars | `24881_Mars_1_6792.glb` — see below | **unconfirmed** | **unconfirmed** |
-| Sun, Venus, Earth (day + clouds) | [Solar System Scope](https://www.solarsystemscope.com/textures/) | INOVE | CC-BY-4.0 |
+| Sun, Venus, Earth (day + clouds), Saturn, Uranus, Neptune, the Moon | [Solar System Scope](https://www.solarsystemscope.com/textures/) | INOVE | CC-BY-4.0 |
+
+Solar System Scope also publishes maps for bodies that have never been imaged
+well enough to have one -- Ceres, Eris, Makemake and others, all named
+`*_fictional`. Those are invented, and Helios does not use them: a body with no
+real map keeps its procedural surface, which is honest about being a guess.
 
 Only the **textures** are used from the Sketchfab models above. Their spheres are
 not: Helios generates its own, which carry real polar flattening, axial tilt and

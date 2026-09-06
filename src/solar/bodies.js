@@ -5,6 +5,9 @@ import {
   createBodyMaterial, createCloudMaterial, createAtmosphereMaterial, applySurfaceMap,
 } from '../render/material.js';
 import { createSaturnRings } from './rings.js';
+
+// Apparent radius, in pixels, at which a body's surface map is worth fetching.
+const MAP_REQUEST_PX = 6;
 import { createCorona, createMarker } from '../render/billboards.js';
 
 const DEG = Math.PI / 180;
@@ -70,12 +73,18 @@ export class SolarSystem {
     return { orbitNode, tiltFrame, spinFrame };
   }
 
+  // Surface maps are fetched on approach, not at startup.
+  //
+  // Every map used to load with the scene, so a visitor who never left the
+  // default view still paid for all of them, and each new body made the first
+  // frame more expensive for everyone. The material copes by design: uHasMap
+  // gates the sampling, so a body renders procedurally until its map arrives and
+  // simply gains detail when it does. updateAppearance does the asking.
   _makeSurface(def, geometry) {
     const material = createBodyMaterial(def.shader, {
       color: def.color,
       seed: hashSeed(def.id),
     });
-    if (def.map) applySurfaceMap(material, def.map);
     const mesh = new THREE.Mesh(geometry, material);
     const polar = def.polarRadius ?? def.radius;
     mesh.userData.baseScale = new THREE.Vector3(def.radius, polar, def.radius);
@@ -138,7 +147,6 @@ export class SolarSystem {
     let clouds = null;
     if (def.id === 'earth') {
       clouds = new THREE.Mesh(UNIT_SPHERE_HI, createCloudMaterial());
-      if (def.cloudMap) applySurfaceMap(clouds.material, def.cloudMap);
       // ~25 km up: high cirrus, and just enough to avoid z-fighting the surface.
       const lift = 1 + 25 / def.radius;
       clouds.userData.baseScale = new THREE.Vector3(
@@ -291,6 +299,16 @@ export class SolarSystem {
       // navigation markers and the surface detail band below.
       const apparentPx = (b.def.radius / Math.max(dist, 1e-6)) * pxPerRadian;
       b.apparentPx = apparentPx;
+
+      // Fetch the surface map once the body is worth more than a few pixels.
+      // The threshold is deliberately low: a map is a few hundred KB and the
+      // body goes on growing while it downloads, so it is nearly always there
+      // before it could be missed.
+      if (!b.mapRequested && b.def.map && apparentPx > MAP_REQUEST_PX) {
+        b.mapRequested = true;
+        if (b.mesh?.material) applySurfaceMap(b.mesh.material, b.def.map);
+        if (b.clouds && b.def.cloudMap) applySurfaceMap(b.clouds.material, b.def.cloudMap);
+      }
 
       // Procedural level of detail.
       //
