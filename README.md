@@ -10,17 +10,22 @@ km Sun, and you can go and look.
 ![Earth and the Moon at true separation: Earth a small disc at the right of frame, the Moon a grey dot near the left, nothing in between](docs/screenshots/earth-moon-gap.png)
 
 That is the Earth–Moon gap, to scale, with nothing removed. Thirty Earths would
-fit end to end in it. Every picture below is a real frame from the app, rendered
-by `tests/screenshot-probe.html`, not a mock-up.
+fit end to end in it. Every picture here is a real frame from the app, captured
+by `tests/screenshot-probe.html` — nothing is mocked, composited or retouched.
+
+![The International Space Station in orbit, solar arrays extended, seen against the blue of Earth below with cloud cover and the terminator curving away at the left](docs/screenshots/iss.jpg)
+
+The station is where it actually is: propagated from its orbital elements for the
+date on the clock, 420 km up, moving at 7.66 km/s. The model is NASA's own.
 
 ## More of it
 
 | | |
 |---|---|
-| ![Saturn, its rings casting a shadow across the planet, the Cassini division clearly separating the A and B rings, with moon orbits drawn around it](docs/screenshots/saturn-rings.png) | ![Jupiter as a small banded disc surrounded by the four large ellipses of the Galilean moons' orbits, each moon marked with a hollow ring](docs/screenshots/jupiter-moons.png) |
-| **Saturn's rings** at their real radii, with the Cassini division where it belongs and the ring shadow falling across the planet. | **Jupiter and the Galileans.** The planet is a dot; Callisto's orbit is 1.88 million km wide. Moons too small to see get a hollow ring, never a filled disc. |
-| ![Earth close up, filling most of the frame, showing continents, ocean, cloud and a lit atmospheric rim fading into the night side](docs/screenshots/earth-surface.png) | ![The inner solar system seen from above and to one side, with elliptical orbit lines for the planets and small hollow ring markers on each](docs/screenshots/inner-system.png) |
-| **Earth from low orbit**, with the atmosphere shell and the terminator in the right place for the date on the clock. | **The inner system**, orbit lines drawn from JPL elements. The rings are markers for bodies below a few pixels — they say "something is here", not "this is how big it is". |
+| ![Saturn, its rings casting a shadow across the planet, the Cassini division separating the A and B rings, moon orbits drawn around it](docs/screenshots/saturn-rings.png) | ![Jupiter filling the frame, the Great Red Spot at the left, banded cloud belts and a visibly flattened profile](docs/screenshots/jupiter.jpg) |
+| **Saturn's rings** at their real radii, the Cassini division where it belongs, and the ring shadow falling across the planet. | **Jupiter**, with the Great Red Spot and the polar flattening that comes of a ten-hour day. |
+| ![Earth close up, showing continents, ocean, cloud and a lit atmospheric rim fading into the night side](docs/screenshots/earth-surface.jpg) | ![The inner solar system from above and to one side, elliptical orbit lines for each planet, small hollow ring markers where the planets are](docs/screenshots/inner-system.png) |
+| **Earth from low orbit**, atmosphere shell and terminator in the right place for the date on the clock. | **The inner system**, orbits drawn from JPL elements. Hollow rings mark bodies below a few pixels — they say *something is here*, never *this is how big it is*. |
 
 ## Running it
 

@@ -25,6 +25,8 @@ import { OrbitLines } from '../src/solar/orbits.js';
 import { AsteroidBelt } from '../src/solar/belt.js';
 import { createStarfield } from '../src/render/starfield.js';
 import { julianDate } from '../src/solar/kepler.js';
+import { Spacecraft } from '../src/solar/spacecraft.js';
+import { CRAFT } from '../src/solar/data.js';
 import { postProbe, postCanvas } from './probe-io.js';
 
 const log = [];
@@ -130,12 +132,40 @@ function waitForTextures(ms) {
 
   shoot('saturn-rings', saturn.worldPos.clone().add(V(3.4e5, 9e4, 2.4e5)), saturn.worldPos, 50,
         {}, { belt: false });
-  shoot('jupiter-moons',
-        jupiter.worldPos.clone().add(V(0.35, 0.42, 1).normalize().multiplyScalar(2.6e6)),
-        jupiter.worldPos, 62, { showMarkers: true }, { belt: false });
+  // Close enough for the belts and the Red Spot to read, which needs roughly
+  // three radii of standoff at this field of view.
+  const jr = jupiter.renderRadius ?? jupiter.def.radius;
+  shoot('jupiter', jupiter.worldPos.clone().add(V(1, 0.22, 0.75).normalize().multiplyScalar(jr * 3.1)),
+        jupiter.worldPos, 50, {}, { lines: false, belt: false });
   shoot('earth-surface', earth.worldPos.clone().add(V(1.1e4, 3.5e3, 1.1e4)), earth.worldPos, 50,
         {}, { lines: false, belt: false });
   shoot('inner-system', V(0, 1.4e8, 3.6e8), sun.worldPos, 55, { showMarkers: true });
+
+  // The station: 44 MB of geometry, loaded only when something is within 200 km
+  // of it, so the camera has to be put there first and the load waited out.
+  const issDef = CRAFT.find(c => c.id === 'iss');
+  const iss = new Spacecraft(system, scene, issDef);
+  iss.updatePosition(jd);
+
+  // Sit off the station on the side away from Earth, so the planet fills the
+  // background behind it rather than the camera being buried in it.
+  const up = iss.record.worldPos.clone().sub(earth.worldPos).normalize();
+  const across = new THREE.Vector3(0, 1, 0).cross(up).normalize();
+  const camPos = iss.record.worldPos.clone()
+        .add(up.clone().multiplyScalar(0.20))
+        .add(across.multiplyScalar(0.16));
+
+  iss.updateVisuals(camPos);           // within 200 km, so this starts the load
+  for (let i = 0; i < 120 && !iss.loaded; i++) {
+    await new Promise(r => setTimeout(r, 500));
+  }
+  say(`iss model: ${iss.loaded ? 'loaded' : 'DID NOT LOAD'}`);
+
+  if (iss.loaded) {
+    iss.updatePosition(jd);
+    iss.updateVisuals(camPos);
+    shoot('iss', camPos, iss.record.worldPos, 50, {}, { lines: false, belt: false });
+  }
 
   postProbe('shots-done.txt', log.join('\n'));
   say('done');
