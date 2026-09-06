@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Checks the hardening claims in SECURITY.md against a running container, so
-# they stay claims that are tested rather than claims that were once true.
+# Checks the container's hardening against a running instance, so the properties
+# it relies on stay tested rather than merely intended.
 #
 #   docker build -t helios:test . && tests/verify-container.sh
 #

@@ -34,41 +34,30 @@ Unlike the planet textures, the JWST **geometry** is used, not just its maps.
 
 ## The ISS
 
-`assets/ISS_stationary.glb` — **licence unknown.** It arrived without the
-`license.txt` that accompanies every other model here, so its author and terms
-could not be recorded. It is the one asset whose *geometry* is used, because the
-station is not a sphere and nothing here could generate it.
+`assets/ISS_stationary.glb` is NASA's own model of the station, from
+[science.nasa.gov](https://science.nasa.gov/resource/international-space-station-3d-model/),
+made by **NASA's Visualization Technology Applications and Development (VTAD)**
+team and published 2019-04-22.
 
-**This needs resolving before the project is shared.** If it came from Sketchfab
-it is almost certainly CC-BY and simply needs its author credited; if it is
-NASA's own model it is public domain and no attribution is required, though it is
-usually given. Until the source is known, treat this file as not clearable for
-redistribution.
+> Credit: NASA Visualization Technology Applications and Development (VTAD)
 
-### What the file itself says
+As a work of the United States government it is not subject to copyright and is
+free to use, including commercially. NASA asks that its material not be used to
+imply endorsement, and requests — rather than requires — a credit line. Helios
+gives one anyway, in the app's Credits panel.
 
-Its glTF `asset` block carries only `"generator": "Khronos Blender glTF 2.0
-I/O"` — no `copyright` field — and a `strings` sweep of all 44 MB turns up no
-author, licence or URL. So the file records nothing.
+This is the one asset whose *geometry* is used rather than just its maps,
+because the station is not a sphere and nothing here could generate it.
 
-Its structure does, though. It has 132 nodes, **89 of them named as numbered ISS
-elements in assembly order** — `01 Zarya - (FGB) Funtional Cargo Block`,
-`02 Unity Node 1`, `05 Zvezda (SM) Service Module`, `13 Pirs Docking Compartment
-(DC) and Airlock`, `34 Poisk (MRM-2) Mini Research Module` — including the
-misspelling *Funtional*, which is a searchable fingerprint.
-
-**A lead, not an answer:** NASA's 3D Resources publishes a high-resolution ISS
-model "in many parts … which preserves the configuration of the component
-parts", in Lightwave format, at the station's February 2011 configuration. A
-many-part model numbered in assembly order is consistent with that, and NASA's
-models are US-government public domain. But the NASA page does not publish its
-part list, so this could not be confirmed, and a licence question is not
-something to settle on a resemblance.
-
-To settle it: download the NASA hi-res ISS model and compare the part names — if
-the numbering and the *Funtional* typo match, the file is public domain and the
-question closes. Otherwise search Sketchfab for the same naming scheme. Whoever
-downloaded this file may also simply remember.
+The file arrived without the `license.txt` that accompanies the Sketchfab
+models, so its origin was unknown for a while, and the file records nothing
+itself: its glTF `asset` block carries only `"generator": "Khronos Blender glTF
+2.0 I/O"`, and a `strings` sweep of all 42 MB finds no author, licence or URL.
+What identified it in the end was the source being named directly — corroborated
+by the download on that page being a glTF of **42.43 MB**, exactly the size of
+this file, and by its 89 nodes named as numbered ISS elements in assembly order
+(`01 Zarya - (FGB) Funtional Cargo Block`, `34 Poisk (MRM-2) Mini Research
+Module`), which is how NASA's multi-part model is structured.
 
 ## Source models, removed
 

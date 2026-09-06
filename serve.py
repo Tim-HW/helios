@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dev server for Helios. NOT for public exposure — see SECURITY.md.
+"""Dev server for Helios. NOT for public exposure.
 
 Plain `python3 -m http.server` lets the browser cache modules, which in a
 project with no build step is actively harmful: you edit a file, reload, and get
@@ -94,7 +94,7 @@ def main():
           + (', probe endpoint ENABLED' if PROBE_ENABLED else '') + ')')
     if host not in ('127.0.0.1', 'localhost', '::1'):
         print('  ! bound beyond loopback — this is a development server, '
-              'not something to expose. See SECURITY.md.')
+              'not something to expose.')
     ThreadingHTTPServer((host, port), partial(NoCacheHandler)).serve_forever()
 
 

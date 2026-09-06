@@ -396,10 +396,13 @@ models the repo used to carry were deleted outright — their textures had alrea
 been extracted into `assets/textures`, and nothing loaded the originals. Their
 licences were kept in `assets/licenses/`; see [`CREDITS.md`](CREDITS.md).
 
-[`SECURITY.md`](SECURITY.md) has the reasoning, the two silent nginx footguns
-this hit on the way (`add_header` does not accumulate; `types {}` replaces rather
-than extends), and the one thing still outstanding — the ISS model has no licence
-file, and publishing it is redistribution.
+Two nginx footguns are worth knowing about, because both fail silently and both
+were hit here: `add_header` does not accumulate — one in a `location` discards
+every header inherited from the `server` block — and `types { ... }` replaces the
+MIME table rather than extending it, which turns `index.html` into
+`application/octet-stream`. The reasoning for each sits in a comment beside it in
+[`docker/nginx.conf`](docker/nginx.conf), and both are asserted in
+[`tests/verify-container.sh`](tests/verify-container.sh).
 
 ## Checking it
 
