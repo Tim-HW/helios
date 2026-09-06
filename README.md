@@ -7,6 +7,21 @@ Almost every diagram of the solar system lies, because an honest one is mostly
 empty. Helios doesn't. Earth is a 6,371 km speck 149.6 million km from a 696,000
 km Sun, and you can go and look.
 
+![Earth and the Moon at true separation: Earth a small disc at the right of frame, the Moon a grey dot near the left, nothing in between](docs/screenshots/earth-moon-gap.png)
+
+That is the Earth–Moon gap, to scale, with nothing removed. Thirty Earths would
+fit end to end in it. Every picture below is a real frame from the app, rendered
+by `tests/screenshot-probe.html`, not a mock-up.
+
+## More of it
+
+| | |
+|---|---|
+| ![Saturn, its rings casting a shadow across the planet, the Cassini division clearly separating the A and B rings, with moon orbits drawn around it](docs/screenshots/saturn-rings.png) | ![Jupiter as a small banded disc surrounded by the four large ellipses of the Galilean moons' orbits, each moon marked with a hollow ring](docs/screenshots/jupiter-moons.png) |
+| **Saturn's rings** at their real radii, with the Cassini division where it belongs and the ring shadow falling across the planet. | **Jupiter and the Galileans.** The planet is a dot; Callisto's orbit is 1.88 million km wide. Moons too small to see get a hollow ring, never a filled disc. |
+| ![Earth close up, filling most of the frame, showing continents, ocean, cloud and a lit atmospheric rim fading into the night side](docs/screenshots/earth-surface.png) | ![The inner solar system seen from above and to one side, with elliptical orbit lines for the planets and small hollow ring markers on each](docs/screenshots/inner-system.png) |
+| **Earth from low orbit**, with the atmosphere shell and the terminator in the right place for the date on the clock. | **The inner system**, orbit lines drawn from JPL elements. The rings are markers for bodies below a few pixels — they say "something is here", not "this is how big it is". |
+
 ## Running it
 
 No build step and no dependencies to install — three.js is vendored in `vendor/`.

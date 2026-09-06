@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Helios screenshot probe</title>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.js", "three/addons/": "../vendor/" } }
+</script>
+<style>
+  body { background:#0a0d14; color:#dbe4f0; font:13px/1.55 ui-monospace,monospace; padding:16px; }
+  pre { white-space:pre-wrap; }
+  canvas { max-width:420px; border:1px solid #333; margin:6px 6px 0 0; }
+</style>
+</head>
+<body>
+<h1 style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#8394ab">
+Helios — README screenshots</h1>
+<pre id="log">starting…</pre>
+<div id="thumbs"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { SolarSystem } from '../src/solar/bodies.js';
+import { OrbitLines } from '../src/solar/orbits.js';
+import { AsteroidBelt } from '../src/solar/belt.js';
+import { createStarfield } from '../src/render/starfield.js';
+import { julianDate } from '../src/solar/kepler.js';
+import { postProbe, postCanvas } from './probe-io.js';
+
+const log = [];
+const say = (m) => { log.push(m); document.getElementById('log').textContent = log.join('\n'); };
+
+const W = 1600, H = 900;
+const canvas = document.createElement('canvas');
+canvas.width = W; canvas.height = H;
+const renderer = new THREE.WebGLRenderer({
+  canvas, antialias: true, logarithmicDepthBuffer: true, preserveDrawingBuffer: true,
+});
+renderer.setSize(W, H, false);
+renderer.setClearColor(0x000000, 1);
+renderer.toneMapping = THREE.NeutralToneMapping;
+
+const scene = new THREE.Scene();
+const system = new SolarSystem();
+scene.add(system.root);
+const orbits = new OrbitLines(system);
+scene.add(orbits.group);
+const belt = new AsteroidBelt();
+scene.add(belt.points);
+const stars = createStarfield(9000, 5e8);
+scene.add(stars);
+
+const camera = new THREE.PerspectiveCamera(55, W / H, 0.1, 1e10);
+const jd = julianDate(new Date('2026-06-01T00:00:00Z'));
+system.updatePositions(jd);
+
+const res = new THREE.Vector2(W, H);
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+
+function shoot(name, camPos, lookAt, fov = 55, opts = {}, show = {}) {
+  // Orbit lines and belt are user toggles in the app; a close-up with the lines
+  // off is a real configuration, not a staged one.
+  orbits.group.visible = show.lines !== false;
+  belt.points.visible  = show.belt !== false;
+  camera.fov = fov;
+  camera.updateProjectionMatrix();
+  camera.position.copy(camPos);
+  camera.lookAt(lookAt);
+  camera.updateMatrixWorld(true);
+  stars.position.copy(camera.position);
+  const o = { showMarkers: false, realisticLight: false, exaggeration: 1, time: 0, ...opts };
+  system.updateAppearance(camera, res, o);
+  orbits.update(jd, camera.position);
+  renderer.render(scene, camera);
+
+  // Reject a frame that is essentially black: a screenshot of nothing is worse
+  // than no screenshot, because it looks like a finished result.
+  const gl = renderer.getContext();
+  const buf = new Uint8Array(W * H * 4);
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  let lit = 0;
+  for (let i = 0; i < buf.length; i += 4) {
+    if (Math.max(buf[i], buf[i+1], buf[i+2]) > 8) lit++;
+  }
+  const pct = (100 * lit / (W * H));
+  const status = postCanvas(`${name}.png`, canvas);
+  say(`${name.padEnd(18)} lit ${pct.toFixed(2).padStart(6)}%  post ${status}`);
+
+  const t = document.createElement('canvas');
+  t.width = W; t.height = H;
+  t.getContext('2d').drawImage(canvas, 0, 0);
+  document.getElementById('thumbs').appendChild(t);
+  return pct;
+}
+
+// Textures and the ring maps arrive asynchronously; shooting before they land
+// gives procedurally-shaded spheres, which is not what the app looks like.
+function waitForTextures(ms) {
+  return new Promise((resolve) => {
+    let done = false;
+    THREE.DefaultLoadingManager.onLoad = () => { if (!done) { done = true; resolve('manager idle'); } };
+    setTimeout(() => { if (!done) { done = true; resolve('timeout'); } }, ms);
+  });
+}
+
+(async () => {
+  say(`three r${THREE.REVISION}  ${W}x${H}`);
+  const why = await waitForTextures(20000);
+  say(`textures: ${why}`);
+  // A couple of frames after load, so any texture that landed mid-flight is
+  // uploaded before the first capture.
+  await new Promise(r => setTimeout(r, 1500));
+
+  const sun     = system.byId.get('sun');
+  const earth   = system.byId.get('earth');
+  const moon    = system.byId.get('moon');
+  const saturn  = system.byId.get('saturn');
+  const jupiter = system.byId.get('jupiter');
+
+  // The thesis shot: Earth and the Moon at true separation, side on, sunlit side.
+  const sep  = new THREE.Vector3().subVectors(moon.worldPos, earth.worldPos);
+  const side = new THREE.Vector3(0, 1, 0).cross(sep).normalize();
+  const sunward = earth.worldPos.clone().negate().normalize();
+  if (side.dot(sunward) < 0) side.negate();
+  const mid = sep.clone().multiplyScalar(0.5);
+  shoot('earth-moon-gap',
+        earth.worldPos.clone().add(mid).add(side.multiplyScalar(sep.length() * 0.62)),
+        earth.worldPos.clone().add(mid), 62,
+        { showMarkers: false }, { lines: false, belt: false });
+
+  shoot('saturn-rings', saturn.worldPos.clone().add(V(3.4e5, 9e4, 2.4e5)), saturn.worldPos, 50,
+        {}, { belt: false });
+  shoot('jupiter-moons',
+        jupiter.worldPos.clone().add(V(0.35, 0.42, 1).normalize().multiplyScalar(2.6e6)),
+        jupiter.worldPos, 62, { showMarkers: true }, { belt: false });
+  shoot('earth-surface', earth.worldPos.clone().add(V(1.1e4, 3.5e3, 1.1e4)), earth.worldPos, 50,
+        {}, { lines: false, belt: false });
+  shoot('inner-system', V(0, 1.4e8, 3.6e8), sun.worldPos, 55, { showMarkers: true });
+
+  postProbe('shots-done.txt', log.join('\n'));
+  say('done');
+})();
+</script>
+</body>
+</html>

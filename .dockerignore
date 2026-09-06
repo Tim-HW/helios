@@ -4,6 +4,7 @@
 .shots
 .verify
 tests
+docs
 *.md
 !CREDITS.md
 serve.py
