@@ -406,7 +406,7 @@ tests/verify-vendor.sh --upstream  # 10 assertions: vendored three.js vs npm
 The compose file lives in `docker/` but builds from the repository root — that
 is where `index.html`, `src/`, `vendor/`, `assets/` and `.dockerignore` are.
 
-The image is nginx serving five things — `index.html`, `src/`, `vendor/`, the 52
+The image is nginx serving five things — `index.html`, `src/`, `vendor/`, the 56
 files in `assets/`, and `CREDITS.md` — read-only, unprivileged, with every
 capability dropped and no method but `GET`/`HEAD` accepted. It publishes on
 `127.0.0.1` on purpose: a TLS terminator goes in front.

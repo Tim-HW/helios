@@ -139,6 +139,7 @@ function waitForTextures(ms) {
   await new Promise(r => setTimeout(r, 1500));
 
   const mars    = system.byId.get('mars');
+  const io      = system.byId.get('io');
   const sun     = system.byId.get('sun');
   const earth   = system.byId.get('earth');
   const moon    = system.byId.get('moon');
@@ -176,6 +177,16 @@ function waitForTextures(ms) {
             .add(new THREE.Vector3(0, 0.22, 0))
             .normalize().multiplyScalar(mr * 3.1)),
         mars.worldPos, 50, {}, { lines: false, belt: false });
+
+  // Sunlit side, so the map is actually visible.
+  const ir = io.renderRadius ?? io.def.radius;
+  const ioSun = io.worldPos.clone().negate().normalize();
+  const ioSide = new THREE.Vector3(0, 1, 0).cross(ioSun).normalize();
+  await aimAndShoot('io',
+        io.worldPos.clone().add(ioSun.clone().multiplyScalar(0.8)
+          .add(ioSide.multiplyScalar(0.5)).add(new THREE.Vector3(0, 0.2, 0))
+          .normalize().multiplyScalar(ir * 3.2)),
+        io.worldPos, 50, {}, { lines: false, belt: false });
 
   await aimAndShoot('earth-surface', earth.worldPos.clone().add(V(1.1e4, 3.5e3, 1.1e4)), earth.worldPos, 50,
         {}, { lines: false, belt: false });

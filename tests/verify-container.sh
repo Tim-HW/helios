@@ -42,7 +42,7 @@ ck "test page /tests/smoke.html" 404 "$(code $B/tests/smoke.html)"
 ck "/_probe/x"  404 "$(code $B/_probe/x)"
 # assets/ should contain only what the app loads, plus the licence files.
 ck "no directory listing under assets/" 404 "$(code $B/assets/textures/)"
-ck "assets/ is only what ships" "52" "$(docker exec $NAME sh -c 'find /usr/share/nginx/html/assets -type f | wc -l' | tr -d ' ')"
+ck "assets/ is only what ships" "56" "$(docker exec $NAME sh -c 'find /usr/share/nginx/html/assets -type f | wc -l' | tr -d ' ')"
 ck "/Dockerfile"               404 "$(code $B/Dockerfile)"
 ck "path traversal"                 400 "$(code --path-as-is "$B/../../etc/passwd")"
 

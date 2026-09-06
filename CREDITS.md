@@ -14,6 +14,7 @@ here. Every one of these requires attribution.
 | Miranda | [Uranus](https://sketchfab.com/3d-models/uranus-0009a69dbace44608c0bd09af9ba20db) | [NestaEric](https://sketchfab.com/Nestaeric) | CC-BY-4.0 |
 | Mars | `24881_Mars_1_6792.glb` — see below | **unconfirmed** | **unconfirmed** |
 | Sun, Venus, Earth (day + clouds), Saturn, Uranus, Neptune, the Moon | [Solar System Scope](https://www.solarsystemscope.com/textures/) | INOVE | CC-BY-4.0 |
+| Io, Europa, Ganymede, Callisto | [USGS Astrogeology global mosaics](https://planetarymaps.usgs.gov/mosaic/) (Voyager / Galileo SSI) | USGS / NASA | public domain |
 
 Solar System Scope also publishes maps for bodies that have never been imaged
 well enough to have one -- Ceres, Eris, Makemake and others, all named
@@ -24,6 +25,32 @@ Only the **textures** are used from the Sketchfab models above. Their spheres ar
 not: Helios generates its own, which carry real polar flattening, axial tilt and
 rotation period, and take part in the eclipse shadowing, atmospheric scattering
 and level-of-detail work that a stock glTF material could not.
+
+## The Galilean moons
+
+Io, Europa, Ganymede and Callisto use the USGS Astrogeology global mosaics built
+from Voyager and Galileo imagery. Works of the US government, so public domain;
+no attribution is required and it is given anyway.
+
+They are not used raw, and the two changes made to them are worth stating:
+
+**Data gaps are filled.** The mosaics have regions no spacecraft ever imaged --
+none on Io, but 3.4% of Ganymede, 3.8% of Callisto and 4.3% of Europa, mostly
+polar. In the source these are pure black, and on a sphere they read as dark
+terrain, which is a worse lie than a procedural guess. They are filled by
+normalised convolution: the surrounding *valid* pixels are blurred and divided
+by their own blurred coverage, so a gap takes the tone of what is around it
+rather than an average that includes its own blackness. The result reads as
+nothing in particular, which is what it is.
+
+**They are tinted.** The mosaics are single-band greyscale; these moons are not
+grey. Luminance is multiplied by the body's documented colour, pulled two-thirds
+of the way rather than all of it -- a full-strength tint drives one channel to
+near zero and the map stops looking photographic. No detail is invented: every
+feature is the real one, and only its hue is supplied.
+
+`tools/usgs-mosaic-to-map.py` does both, and the numbers above come from its
+output.
 
 ## Mars — source not yet confirmed
 

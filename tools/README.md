@@ -31,3 +31,14 @@ over it.
 
 Needs Pillow. No numpy — the rasteriser is pure Python and takes about two
 seconds for a 3,000-triangle model at 2048x1024.
+
+## Turning a USGS global mosaic into a surface map
+
+```sh
+python3 tools/usgs-mosaic-to-map.py Io.tif io.jpg '#d6c85a'
+```
+
+Downloads from <https://planetarymaps.usgs.gov/mosaic/> are simple-cylindrical
+GeoTIFFs of 60-190 MB, so a straight resize to 2048x1024 *is* the reprojection.
+The script also fills the no-data gaps and tints the greyscale toward the body's
+colour; `CREDITS.md` explains why both are done and what they do not change.
