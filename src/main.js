@@ -11,6 +11,7 @@ import { CRAFT } from './solar/data.js';
 import { createStarfield } from './render/starfield.js';
 import { FlyCamera } from './camera/flycam.js';
 import { Labels } from './ui/labels.js';
+import { initTouchUI } from './ui/touch.js';
 import { Hud } from './ui/hud.js';
 import { createViewpoints } from './ui/viewpoints.js';
 
@@ -39,6 +40,9 @@ scene.add(starfield);
 
 const clock = new SimClock(new Date());
 const flycam = new FlyCamera(camera, system, canvas);
+
+// Phone-sized screens need a menu, a collapsible readout and a way to fly.
+initTouchUI({ flycam });
 
 const options = {
   showOrbits: true,

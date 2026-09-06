@@ -63,6 +63,24 @@ named so they cannot collide with any earlier copy that did define them.
 
 Then open <http://localhost:8000>.
 
+## On a phone
+
+Below 900px wide — or on any touch screen up to tablet size, or any viewport
+under 500px tall — the three corner panels are replaced by a top bar, a bottom
+sheet behind the `☰` button, and a thumb pad. The readout collapses to the name
+of whatever you are near; tapping it opens the rest.
+
+The pad matters more than it looks. Dragging already worked on touch, because
+the camera listens on pointer events rather than mouse events — but *flying* was
+bound to WASD, so a phone could turn on the spot and do nothing else. The `▲ ▼`
+buttons push key codes into the same set the keyboard fills, so there is only
+one movement path.
+
+`tests/layout-probe.html` checks the result rather than trusting it: it loads
+the app into iframes at 390x844, 844x390, 820x1180 and 1440x900 — an iframe gets
+its own viewport, so media queries respond to it — and asserts that no two
+panels overlap and nothing sits off-screen.
+
 ## Flying
 
 | | |

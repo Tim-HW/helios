@@ -178,12 +178,147 @@
   #boot.hidden { display: none; }
   #boot .err { color: #ff9f8c; font-family: var(--mono); max-width: 640px; text-align: left;
                white-space: pre-wrap; margin-top: 12px; }
+
+  /* ------------------------------------------------------------------ *
+   * Small screens.
+   *
+   * The desktop layout is three fixed panels pinned to three corners:
+   * 262 + 212 px of chrome, which on a 390 px phone overlap each other and
+   * bury the thing you came to look at. Below 760px they are rearranged
+   * into a top bar, a bottom sheet and a thumb pad, and nothing overlaps.
+   *
+   * The height clause is not redundant with the width one: a phone in
+   * landscape is 844px wide and 390px tall, which is wide enough to pass a
+   * width test and far too short for two stacked corner panels. 900px rather
+   * than 760px because at 820 the corner layout still collides: the readout
+   * runs to x=322 and the centred scale bar starts at x=317.
+   * ------------------------------------------------------------------ */
+  #ui-menu, #touch-move, .touch-only { display: none; }
+
+  @media (max-width: 900px), (max-height: 500px), (pointer: coarse) and (max-width: 1024px) {
+    /* Panels stop being corner-pinned islands. */
+    .panel { border-radius: 10px; }
+
+    #clock {
+      top: 0; left: 0; right: 0; min-width: 0;
+      border-radius: 0 0 12px 12px; padding: 8px 12px 10px;
+    }
+    #brand { display: none; }              /* the tab title already says it */
+    #date { font-size: 16px; }
+    #warp { margin: 8px 0 4px; height: 26px; }
+    #clock .row { gap: 6px; }
+    #clock button { flex: 1; padding: 9px 4px; font-size: 12px; }
+    #date-row { display: none; }           /* moved into the sheet */
+
+    /* The body readout collapses to its heading; tapping it opens the rest.
+       On a phone the name of what you are near is the part worth 40px. */
+    #readout {
+      left: 8px; right: 8px; bottom: 76px; min-width: 0;
+      max-height: 40vh; overflow-y: auto; padding: 10px 12px; z-index: 11;
+    }
+    body:not(.readout-open) #readout dl,
+    body:not(.readout-open) #readout .note { display: none; }
+    #readout h2 { margin: 0; font-size: 15px; }
+    #readout h2::after {
+      content: ' ▾'; color: var(--dim); font-size: 11px;
+    }
+    body.readout-open #readout h2::after { content: ' ▴'; }
+
+    /* The sidebar becomes a bottom sheet. */
+    #sidebar {
+      top: auto; right: 0; left: 0; bottom: 0; width: auto;
+      max-height: 78vh; border-radius: 14px 14px 0 0;
+      transform: translateY(102%); transition: transform 0.22s ease;
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+    body.sheet-open #sidebar { transform: translateY(0); }
+    #sidebar summary { padding: 12px 12px; font-size: 11px; }
+    #sidebar details > *:not(summary) { padding: 0 12px 12px; }
+    .target { padding: 9px 8px; font-size: 13px; }
+    .target.moon { padding-left: 24px; font-size: 12.5px; }
+    .toggle { padding: 6px 0; }
+    .toggle span { font-size: 13px; }
+    .toggle input[type=checkbox] { width: 20px; height: 20px; }
+
+    /* Menu button, bottom right, clear of the thumb pad. */
+    #ui-menu {
+      display: block; position: fixed; z-index: 12;
+      right: 10px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+      width: 52px; height: 52px; border-radius: 50%;
+      background: var(--panel); border: 1px solid var(--edge); color: var(--ink);
+      font-size: 19px; line-height: 1; backdrop-filter: blur(8px);
+    }
+    body.sheet-open #ui-menu { transform: translateY(-78vh); }
+
+    /* Movement. Drag already looks around on touch, but flying is WASD only,
+       so without these a phone can turn on the spot and nothing else. */
+    #touch-move {
+      display: flex; flex-direction: row; gap: 8px;
+      position: fixed; z-index: 12;
+      left: 10px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    }
+    #touch-move button {
+      width: 52px; height: 44px; border-radius: 10px;
+      background: var(--panel); border: 1px solid var(--edge); color: var(--ink);
+      font-size: 15px; line-height: 1; backdrop-filter: blur(8px);
+      touch-action: none; user-select: none;
+    }
+    #touch-move button:active { background: var(--accent); color: #08101c; }
+    body.sheet-open #touch-move { display: none; }
+
+    #scale {
+      /* Sits in the gap between the thumb pad and the menu button, centred
+         within it rather than on the page, which is where it clipped the pad. */
+      left: 132px; right: 72px; transform: none;
+      width: fit-content; margin: 0 auto;
+      bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      padding: 5px 8px;
+    }
+    #scale-bar { width: 88px; margin-left: auto; margin-right: auto; }
+    #scale-text { font-size: 10px; }
+
+    #help {
+      top: 50%; left: 8px; right: 8px; bottom: auto;
+      transform: translateY(-50%); max-width: none; font-size: 13px;
+      max-height: 70vh; overflow-y: auto; padding: 18px 14px 14px;
+      z-index: 20; box-shadow: 0 0 0 100vmax rgba(4, 8, 15, 0.72);
+    }
+    #help .close { top: 6px; right: 8px; font-size: 17px; padding: 6px 10px; }
+
+    .keys-only { display: none; }
+    .touch-only { display: inline; }
+
+    /* Labels crowd badly at this width; keep the majors legible and let the
+       minor bodies fall back to their markers. */
+    .label { font-size: 12px; }
+    .label-dist { display: none; }
+    .label-minor { display: none; }
+  }
+
+  /* Landscape phones: almost no vertical room, so the sheet and readout have
+     to give most of it back. */
+  @media (max-height: 460px) and (pointer: coarse) {
+    #clock { padding: 5px 10px 7px; }
+    #date { font-size: 13px; }
+    #warp { margin: 5px 0 3px; }
+    #readout { max-height: 34vh; bottom: 66px; }
+    #sidebar { max-height: 88vh; }
+    #help { max-height: 70vh; }
+  }
 </style>
 </head>
 <body>
 
 <canvas id="view"></canvas>
 <div id="labels"></div>
+
+<!-- Small-screen furniture. Hidden by the stylesheet above 760px, so the
+     desktop layout is untouched. -->
+<button id="ui-menu" type="button" aria-label="Show panels">☰</button>
+<div id="touch-move" aria-hidden="true">
+  <button id="tm-fwd"  type="button" aria-label="Fly forward">▲</button>
+  <button id="tm-back" type="button" aria-label="Fly back">▼</button>
+</div>
 
 <div id="clock" class="panel">
   <div id="brand">Helios · true scale</div>
@@ -277,9 +412,15 @@
 
 <div id="help" class="panel">
   <button class="close" id="help-close">✕</button>
-  <b>Drag</b> to look · <b>W A S D</b> to fly · <b>R / F</b> up &amp; down ·
-  <b>Shift</b> to boost · <b>Scroll</b> for speed<br>
-  <b>Z / X</b> to zoom (<b>C</b> resets) · <b>Esc</b> releases focus<br>
+  <span class="keys-only">
+    <b>Drag</b> to look · <b>W A S D</b> to fly · <b>R / F</b> up &amp; down ·
+    <b>Shift</b> to boost · <b>Scroll</b> for speed<br>
+    <b>Z / X</b> to zoom (<b>C</b> resets) · <b>Esc</b> releases focus<br>
+  </span>
+  <span class="touch-only">
+    <b>Drag</b> to look · <b>▲ ▼</b> to fly · <b>☰</b> for destinations<br>
+    Tap the panel above the controls for details on what you are near.<br>
+  </span>
   Your speed scales with the empty space ahead of you, so the same controls work
   on a moon’s surface and between planets.
 </div>

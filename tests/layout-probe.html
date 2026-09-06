@@ -1,0 +1,71 @@
+<!doctype html><meta charset="utf-8"><title>layout probe</title>
+<style>body{margin:0;background:#0a0d14;color:#dbe4f0;font:12px ui-monospace,monospace}
+iframe{border:1px solid #333;display:block;margin:6px}</style>
+<pre id="log">running…</pre>
+<script type="module">
+import { postProbe, onReady } from './probe-io.js';
+
+// An iframe gets its own viewport, so media queries inside it respond to the
+// iframe's size. That tests every breakpoint in one browser run, and works at
+// sizes headless Firefox will not open a real window at.
+const SIZES = [[390, 844], [844, 390], [820, 1180], [1440, 900]];
+const IDS = ['clock', 'readout', 'sidebar', 'scale', 'ui-menu', 'touch-move'];
+const out = [];
+
+function check(win, w, h) {
+  const d = win.document;
+  out.push(`\n--- ${w}x${h} ---`);
+  const rects = {};
+  for (const id of IDS) {
+    const el = d.getElementById(id);
+    if (!el) { out.push(`  ${id}: MISSING`); continue; }
+    const cs = win.getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    out.push(`  ${id}: ${cs.display} ${Math.round(r.x)},${Math.round(r.y)} `
+             + `${Math.round(r.width)}x${Math.round(r.height)}`);
+    if (cs.display !== 'none' && r.width > 0 && r.height > 0) rects[id] = r;
+  }
+  let bad = 0;
+  // The sheet is meant to cover things when open; off-screen below is its
+  // resting state, so it is excluded from the overlap test.
+  const keys = Object.keys(rects).filter(k => k !== 'sidebar');
+  for (let i = 0; i < keys.length; i++)
+    for (let j = i + 1; j < keys.length; j++) {
+      const a = rects[keys[i]], b = rects[keys[j]];
+      const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      const oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      if (ox > 2 && oy > 2) { out.push(`  OVERLAP ${keys[i]}/${keys[j]} ${Math.round(ox)}x${Math.round(oy)}`); bad++; }
+    }
+  for (const [id, r] of Object.entries(rects)) {
+    if (id === 'sidebar') continue;   // parked off-screen when closed, by design
+    if (r.right > w + 2 || r.left < -2 || r.top < -2 || r.bottom > h + 2) {
+      out.push(`  OFFSCREEN ${id} (${Math.round(r.left)},${Math.round(r.top)} to ${Math.round(r.right)},${Math.round(r.bottom)})`);
+      bad++;
+    }
+  }
+  out.push(bad ? `  FAIL ${bad}` : '  OK');
+  return bad;
+}
+
+onReady(() => {
+  let total = 0, i = 0;
+  const next = () => {
+    if (i >= SIZES.length) {
+      out.push(`\n${total ? 'FAILURES: ' + total : 'ALL SIZES OK'}`);
+      document.getElementById('log').textContent = out.join('\n');
+      postProbe('layout.txt', out.join('\n'));
+      return;
+    }
+    const [w, h] = SIZES[i++];
+    const f = document.createElement('iframe');
+    f.width = w; f.height = h; f.src = '../index.html';
+    f.onload = () => setTimeout(() => {
+      try { total += check(f.contentWindow, w, h); }
+      catch (e) { out.push(`  ERROR ${e.message}`); total++; }
+      f.remove(); next();
+    }, 2500);
+    document.body.appendChild(f);
+  };
+  next();
+});
+</script>
