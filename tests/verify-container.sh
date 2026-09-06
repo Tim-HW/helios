@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Checks the container's hardening against a running instance, so the properties
-# it relies on stay tested rather than merely intended.
+# Integration test for the container image: builds nothing, but runs the given
+# image with the same flags as docker-compose.yml, checks it serves the site
+# correctly, and tears it down.
 #
-#   docker build -t helios:test . && tests/verify-container.sh
-#
-# Runs the image with the same flags as docker-compose.yml, asserts, tears down.
+#   docker build -f docker/Dockerfile -t helios:test . && tests/verify-container.sh
 set -u
 IMAGE=${1:-helios:test}
 NAME=helios-verify
@@ -38,26 +37,22 @@ ck "GET /CREDITS.md"      200 "$(code $B/CREDITS.md)"
 echo "not reachable:"
 ck "directory listing /src/"   404 "$(code $B/src/)"
 ck "dotfile /.git/config"      404 "$(code $B/.git/config)"
-ck "dev server /serve.py"      404 "$(code $B/serve.py)"
+ck "/serve.py"      404 "$(code $B/serve.py)"
 ck "test page /tests/smoke.html" 404 "$(code $B/tests/smoke.html)"
-ck "probe endpoint /_probe/x"  404 "$(code $B/_probe/x)"
-# assets/ used to hold 320 MB of source models excluded by .dockerignore; they
-# were deleted from the repo instead. What matters now is the stronger property:
-# nothing is served from assets/ that the app does not load, licences aside.
-ck "no stray dir under assets/" 404 "$(code $B/assets/textures/)"
+ck "/_probe/x"  404 "$(code $B/_probe/x)"
+# assets/ should contain only what the app loads, plus the licence files.
+ck "no directory listing under assets/" 404 "$(code $B/assets/textures/)"
 ck "assets/ is only what ships" "21" "$(docker exec $NAME sh -c 'find /usr/share/nginx/html/assets -type f | wc -l' | tr -d ' ')"
 ck "/Dockerfile"               404 "$(code $B/Dockerfile)"
-ck "traversal"                 400 "$(code --path-as-is "$B/../../etc/passwd")"
+ck "path traversal"                 400 "$(code --path-as-is "$B/../../etc/passwd")"
 
-echo "no write path:"
-# The stock nginx image compiles in the WebDAV module. It is not configured, but
-# the method filter is what actually guarantees that, so test the DAV verbs too.
+echo "read-only:"
 for m in POST PUT DELETE PATCH MKCOL COPY MOVE PROPFIND FROBNICATE; do
   ck "$m /" 405 "$(code -X $m -d x $B/)"
 done
 ck "POST /_probe/evil.html"    405 "$(code -X POST -d '<script>' $B/_probe/evil.html)"
 
-echo "headers (must survive add_header inheritance):"
+echo "response headers:"
 ck "CSP frame-ancestors none"  "yes" "$(hdr / Content-Security-Policy | grep -q "frame-ancestors 'none'" && echo yes || echo no)"
 ck "X-Content-Type-Options"    "nosniff"     "$(hdr / X-Content-Type-Options)"
 ck "Referrer-Policy"           "no-referrer" "$(hdr / Referrer-Policy)"
@@ -66,41 +61,41 @@ ck "CSP present on an asset"   "yes" "$([ -n "$(hdr /assets/textures/mercury.jpg
 ck "CSP present on a 404"      "yes" "$([ -n "$(hdr /nope Content-Security-Policy)" ] && echo yes || echo no)"
 ck "no version in Server"      "nginx" "$(hdr / Server)"
 
-echo "mime (a types{} block would break these):"
+echo "content types:"
 ck "index.html"          "text/html; charset=utf-8"       "$(hdr /index.html Content-Type)"
 ck "main.js"             "application/javascript; charset=utf-8" "$(hdr /src/main.js Content-Type)"
 ck "CREDITS.md"          "text/markdown"                  "$(hdr /CREDITS.md Content-Type)"
 ck "scene.gltf"          "model/gltf+json"                "$(hdr /assets/james-web/scene.gltf Content-Type)"
 ck "ISS_stationary.glb"  "model/gltf-binary"              "$(hdr /assets/ISS_stationary.glb Content-Type)"
 
-echo "redirects (Host header must not be reflected):"
+echo "redirects are relative:"
 loc() { curl -s -o /dev/null -D- -H 'Host: evil.example.com' "$B$1" | grep -i '^location:' | sed 's/^[^:]*: //I' | tr -d '\r'; }
 ck "/src -> relative Location"    "/src/"    "$(loc /src)"
 ck "/assets -> relative Location" "/assets/" "$(loc /assets)"
 ck "internal port not leaked"     "no" "$(loc /src | grep -q 8080 && echo yes || echo no)"
 
-echo "csp is not broader than the app needs:"
+echo "csp matches what the app needs:"
 ck "blob: allowed for gltf textures" "yes" "$(hdr / Content-Security-Policy | grep -q "img-src 'self' data: blob:" && echo yes || echo no)"
 ck "no worker-src (app has no Worker)" "no" "$(hdr / Content-Security-Policy | grep -q 'worker-src' && echo yes || echo no)"
 
-echo "big model still serves correctly under limit_rate:"
+echo "the station model serves whole:"
 ck "full download"     "44495916" "$(curl -s -o /dev/null -w '%{size_download}' $B/assets/ISS_stationary.glb)"
 ck "range requests ok" "206" "$(code -H 'Range: bytes=0-99' $B/assets/ISS_stationary.glb)"
 
-echo "no stray files from the base image:"
+echo "served root is only ours:"
 ck "50x.html not served"   404 "$(code $B/50x.html)"
 ck "served root is 5 items" "5" "$(docker exec $NAME sh -c 'ls /usr/share/nginx/html | wc -l' | tr -d ' ')"
 
-echo "no CORS grant (nothing here is meant to be read cross-origin):"
+echo "same-origin only:"
 ck "no Access-Control-Allow-Origin" "" "$(hdr / Access-Control-Allow-Origin)"
 
-echo "attribution required by CC-BY is actually in the shipped page:"
+echo "attribution is in the shipped page:"
 ck "JWST author credited" "yes" "$(curl -s $B/ | grep -q 'paul_sketch' && echo yes || echo no)"
 ck "JWST source linked"   "yes" "$(curl -s $B/ | grep -q 'jwst-james-webb-space-telescope' && echo yes || echo no)"
 ck "CC links are https"   "0"   "$(curl -s $B/ | grep -c 'http://creativecommons.org' | tr -d ' ')"
 
-echo "malformed and hostile HTTP:"
-# Raw sockets, because curl will not send most of these.
+echo "protocol conformance:"
+# Raw sockets, because curl will not send malformed requests.
 raw() { printf '%b' "$1" | timeout 4 python3 -c 'import socket,sys
 d=sys.stdin.buffer.read()
 s=socket.create_connection(("127.0.0.1",'"$PORT"'),timeout=3); s.sendall(d)
@@ -111,16 +106,16 @@ while len(b)<400:
     if not c: break
     b+=c
 sys.stdout.write((b.split(b"\r\n",1)[0].decode("latin1") or "CLOSED"))'; }
-ck "HTTP/0.9 gets no headerless page" "CLOSED" "$(raw 'GET /\r\n')"
+ck "HTTP/0.9 refused" "CLOSED" "$(raw 'GET /\r\n')"
 ck "HTTP/1.0 still served"     "HTTP/1.1 200 OK"  "$(raw 'GET / HTTP/1.0\r\n\r\n')"
-ck "CL+TE smuggling refused"   "HTTP/1.1 400 Bad Request" "$(raw 'POST / HTTP/1.1\r\nHost: h\r\nContent-Length: 6\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n')"
+ck "Content-Length + Transfer-Encoding refused"   "HTTP/1.1 400 Bad Request" "$(raw 'POST / HTTP/1.1\r\nHost: h\r\nContent-Length: 6\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n')"
 ck "duplicate Host refused"    "HTTP/1.1 400 Bad Request" "$(raw 'GET / HTTP/1.1\r\nHost: a\r\nHost: b\r\n\r\n')"
 ck "duplicate Content-Length refused" "HTTP/1.1 400 Bad Request" "$(raw 'POST / HTTP/1.1\r\nHost: h\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\nhello')"
-ck "CRLF in path not injected" "HTTP/1.1 404 Not Found" "$(raw 'GET /a%0d%0aINJECTED:%201 HTTP/1.1\r\nHost: h\r\n\r\n')"
-ck "NUL in path refused"       "HTTP/1.1 400 Bad Request" "$(raw 'GET /index.html%00.txt HTTP/1.1\r\nHost: h\r\n\r\n')"
-ck "multi-range not assembled" "HTTP/1.1 200 OK" "$(raw 'GET /index.html HTTP/1.1\r\nHost: h\r\nRange: bytes=0-1,2-3,4-5,6-7,8-9\r\n\r\n')"
+ck "CRLF in path" "HTTP/1.1 404 Not Found" "$(raw 'GET /a%0d%0aINJECTED:%201 HTTP/1.1\r\nHost: h\r\n\r\n')"
+ck "NUL in path"       "HTTP/1.1 400 Bad Request" "$(raw 'GET /index.html%00.txt HTTP/1.1\r\nHost: h\r\n\r\n')"
+ck "multi-range collapses to 200" "HTTP/1.1 200 OK" "$(raw 'GET /index.html HTTP/1.1\r\nHost: h\r\nRange: bytes=0-1,2-3,4-5,6-7,8-9\r\n\r\n')"
 ck "single range still works"  "HTTP/1.1 206 Partial Content" "$(raw 'GET /index.html HTTP/1.1\r\nHost: h\r\nRange: bytes=0-99\r\n\r\n')"
-ck "Host never reflected" "no" "$(curl -s -D- -o /dev/null -H 'Host: evil.example.com' $B/src | grep -q evil.example.com && echo yes || echo no)"
+ck "Host absent from responses" "no" "$(curl -s -D- -o /dev/null -H 'Host: evil.example.com' $B/src | grep -q evil.example.com && echo yes || echo no)"
 
 echo "caching:"
 ck "code is not cached hard" "no-cache" "$(hdr /src/main.js Cache-Control)"

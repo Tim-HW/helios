@@ -386,9 +386,9 @@ tests/verify-vendor.sh --upstream  # 10 assertions: vendored three.js vs npm
 The compose file lives in `docker/` but builds from the repository root — that
 is where `index.html`, `src/`, `vendor/`, `assets/` and `.dockerignore` are.
 
-The image is nginx serving five things — `index.html`, `src/`, `vendor/`, the 15
-assets the app actually loads, and `CREDITS.md` — read-only, unprivileged, with
-every capability dropped and no method but `GET`/`HEAD` accepted. It publishes on
+The image is nginx serving five things — `index.html`, `src/`, `vendor/`, the 21
+files in `assets/`, and `CREDITS.md` — read-only, unprivileged, with every
+capability dropped and no method but `GET`/`HEAD` accepted. It publishes on
 `127.0.0.1` on purpose: a TLS terminator goes in front.
 
 It excludes `serve.py` and `tests/` entirely. The 320 MB of Sketchfab source
@@ -396,12 +396,12 @@ models the repo used to carry were deleted outright — their textures had alrea
 been extracted into `assets/textures`, and nothing loaded the originals. Their
 licences were kept in `assets/licenses/`; see [`CREDITS.md`](CREDITS.md).
 
-Two nginx footguns are worth knowing about, because both fail silently and both
-were hit here: `add_header` does not accumulate — one in a `location` discards
-every header inherited from the `server` block — and `types { ... }` replaces the
-MIME table rather than extending it, which turns `index.html` into
-`application/octet-stream`. The reasoning for each sits in a comment beside it in
-[`docker/nginx.conf`](docker/nginx.conf), and both are asserted in
+Two nginx behaviours in that config look like clutter and are not, so both carry
+a comment saying so. `add_header` does not accumulate: one inside a `location`
+discards every header inherited from the `server` block, which is why
+`Cache-Control` comes from a `map`. And `types { ... }` replaces the MIME table
+rather than extending it, which is why the three extra content types are set with
+`default_type` instead. Both fail silently, and both are asserted in
 [`tests/verify-container.sh`](tests/verify-container.sh).
 
 ## Checking it
