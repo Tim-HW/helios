@@ -5,6 +5,7 @@
 .verify
 tests
 docs
+tools
 *.md
 !CREDITS.md
 serve.py
@@ -22,3 +23,7 @@ docker/docker-compose.yml
 # were kept, in assets/licenses/, because they are the attribution evidence for
 # textures that ARE shipped. assets/ is now ~54 MB and every file in it is
 # either loaded by the app or a licence. See CREDITS.md.
+
+# Source model for the Mars map. Its diffuse texture was reprojected into
+# assets/textures/mars.jpg; the app never loads the model itself.
+assets/24881_Mars_1_6792.glb

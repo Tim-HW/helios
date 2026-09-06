@@ -12,12 +12,48 @@ here. Every one of these requires attribution.
 | Mercury | [Mercury](https://sketchfab.com/3d-models/mercury-32347fa4ec1a4987b71f461a401d91c4) | [Akshat](https://sketchfab.com/shooter24994) | CC-BY-4.0 |
 | Enceladus, Mimas | [Saturn](https://sketchfab.com/3d-models/saturn-c09a1970148c43ad99db134a9d6d00b5) | [Nestaeric](https://sketchfab.com/Nestaeric) | CC-BY-4.0 |
 | Miranda | [Uranus](https://sketchfab.com/3d-models/uranus-0009a69dbace44608c0bd09af9ba20db) | [NestaEric](https://sketchfab.com/Nestaeric) | CC-BY-4.0 |
+| Mars | `24881_Mars_1_6792.glb` — see below | **unconfirmed** | **unconfirmed** |
 | Sun, Venus, Earth (day + clouds) | [Solar System Scope](https://www.solarsystemscope.com/textures/) | INOVE | CC-BY-4.0 |
 
 Only the **textures** are used from the Sketchfab models above. Their spheres are
 not: Helios generates its own, which carry real polar flattening, axial tilt and
 rotation period, and take part in the eclipse shadowing, atmospheric scattering
 and level-of-detail work that a stock glTF material could not.
+
+## Mars — source not yet confirmed
+
+`assets/textures/mars.jpg` was reprojected from `assets/24881_Mars_1_6792.glb`,
+which arrived without a `license.txt` and records no provenance of its own: its
+glTF `asset` block carries only `"generator": "Khronos Blender glTF 2.0 I/O"`,
+and a `strings` sweep finds no author, licence or URL. Its mesh is `Cube.001`,
+its material `Default OBJ.005`, and its two embedded textures are named
+`mars_diff.jpg` and `mars_norm.jpg`.
+
+The `24881_` filename prefix and the OBJ-derived material name both resemble how
+NASA's 3D Resources models are packaged, and the ISS model in this project came
+from exactly there — but that is a resemblance, not a provenance, and the same
+reasoning was wrong to rely on once already. **Confirm the source before this
+ships publicly.** If it is NASA's, it is a US government work and no attribution
+is required; if it is the Sketchfab model whose licence is in
+`assets/licenses/mars.txt`, it is CC-BY-4.0 and Nestaeric must be credited.
+
+### How the map was made
+
+The model's texture is not an equirectangular map: it is a **cube-map cross**,
+2048x1536, four 512px faces across by three down, which is why this texture sat
+unused for so long — it fits only the mesh it came with.
+
+It was reprojected by rasterising the model's own triangles into longitude and
+latitude and interpolating their UVs, so the atlas layout is never guessed: the
+result is exactly the mapping the model uses. Triangles crossing the ±180° seam
+are drawn twice, shifted, so the wrap is seamless. The 3.6% of pixels the
+rasteriser leaves uncovered are all at the poles, where triangles span the pole
+itself; those fall back to an analytic cube lookup whose per-face placement is
+least-squares fitted from the same mesh.
+
+The output is 2048x1024, the 2:1 ratio the sphere shader expects. The model's
+normal map is present too and was reprojected identically, but is not wired up:
+the material derives its own terrain normals.
 
 ## Spacecraft models
 

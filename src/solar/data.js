@@ -139,6 +139,7 @@ export const PLANETS = [
     id: 'mars', name: 'Mars', radius: 3396.2, polarRadius: 3376.2, tilt: 25.19,
     rotationHours: 24.6229, mass: 6.417e23, elements: ELEMENTS.mars,
     shader: 'mars', color: '#b5502a',
+    map: 'assets/textures/mars.jpg',
     note: 'Half of Earth’s diameter; a day just 40 minutes longer.',
     atmosphere: ATMOSPHERE.mars,
   },

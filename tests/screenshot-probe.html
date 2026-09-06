@@ -113,6 +113,7 @@ function waitForTextures(ms) {
   // uploaded before the first capture.
   await new Promise(r => setTimeout(r, 1500));
 
+  const mars    = system.byId.get('mars');
   const sun     = system.byId.get('sun');
   const earth   = system.byId.get('earth');
   const moon    = system.byId.get('moon');
@@ -137,6 +138,20 @@ function waitForTextures(ms) {
   const jr = jupiter.renderRadius ?? jupiter.def.radius;
   shoot('jupiter', jupiter.worldPos.clone().add(V(1, 0.22, 0.75).normalize().multiplyScalar(jr * 3.1)),
         jupiter.worldPos, 50, {}, { lines: false, belt: false });
+  // Stand on the sunward side, offset sideways for a three-quarter view: an
+  // arbitrary offset lands on the night hemisphere about half the time, and a
+  // map you cannot see proves nothing about the map.
+  const mr = mars.renderRadius ?? mars.def.radius;
+  const marsSun = mars.worldPos.clone().negate().normalize();
+  const marsSide = new THREE.Vector3(0, 1, 0).cross(marsSun).normalize();
+  shoot('mars',
+        mars.worldPos.clone().add(
+          marsSun.clone().multiplyScalar(0.82)
+            .add(marsSide.multiplyScalar(0.45))
+            .add(new THREE.Vector3(0, 0.22, 0))
+            .normalize().multiplyScalar(mr * 3.1)),
+        mars.worldPos, 50, {}, { lines: false, belt: false });
+
   shoot('earth-surface', earth.worldPos.clone().add(V(1.1e4, 3.5e3, 1.1e4)), earth.worldPos, 50,
         {}, { lines: false, belt: false });
   shoot('inner-system', V(0, 1.4e8, 3.6e8), sun.worldPos, 55, { showMarkers: true });
