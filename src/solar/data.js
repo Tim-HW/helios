@@ -401,7 +401,7 @@ export const ISS = {
   m0: 0,
   color: '#cfd6de',
   note: '109 m across, 413 km up, going round once every 93 minutes.',
-  model: 'assets/ISS_stationary.glb',
+  model: 'assets/iss/scene.gltf',
   modelSpan: 0.109,               // km: scale the model so its longest axis is this
 };
 

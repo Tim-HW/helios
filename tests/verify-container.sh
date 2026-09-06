@@ -42,7 +42,7 @@ ck "test page /tests/smoke.html" 404 "$(code $B/tests/smoke.html)"
 ck "/_probe/x"  404 "$(code $B/_probe/x)"
 # assets/ should contain only what the app loads, plus the licence files.
 ck "no directory listing under assets/" 404 "$(code $B/assets/textures/)"
-ck "assets/ is only what ships" "21" "$(docker exec $NAME sh -c 'find /usr/share/nginx/html/assets -type f | wc -l' | tr -d ' ')"
+ck "assets/ is only what ships" "47" "$(docker exec $NAME sh -c 'find /usr/share/nginx/html/assets -type f | wc -l' | tr -d ' ')"
 ck "/Dockerfile"               404 "$(code $B/Dockerfile)"
 ck "path traversal"                 400 "$(code --path-as-is "$B/../../etc/passwd")"
 
@@ -66,7 +66,7 @@ ck "index.html"          "text/html; charset=utf-8"       "$(hdr /index.html Con
 ck "main.js"             "application/javascript; charset=utf-8" "$(hdr /src/main.js Content-Type)"
 ck "CREDITS.md"          "text/markdown"                  "$(hdr /CREDITS.md Content-Type)"
 ck "scene.gltf"          "model/gltf+json"                "$(hdr /assets/james-web/scene.gltf Content-Type)"
-ck "ISS_stationary.glb"  "model/gltf-binary"              "$(hdr /assets/ISS_stationary.glb Content-Type)"
+ck "iss/scene.gltf"      "model/gltf+json"                "$(hdr /assets/iss/scene.gltf Content-Type)"
 
 echo "redirects are relative:"
 loc() { curl -s -o /dev/null -D- -H 'Host: evil.example.com' "$B$1" | grep -i '^location:' | sed 's/^[^:]*: //I' | tr -d '\r'; }
@@ -79,8 +79,9 @@ ck "blob: allowed for gltf textures" "yes" "$(hdr / Content-Security-Policy | gr
 ck "no worker-src (app has no Worker)" "no" "$(hdr / Content-Security-Policy | grep -q 'worker-src' && echo yes || echo no)"
 
 echo "the station model serves whole:"
-ck "full download"     "44495916" "$(curl -s -o /dev/null -w '%{size_download}' $B/assets/ISS_stationary.glb)"
-ck "range requests ok" "206" "$(code -H 'Range: bytes=0-99' $B/assets/ISS_stationary.glb)"
+ck "geometry buffer"   "11897300" "$(curl -s -o /dev/null -w '%{size_download}' $B/assets/iss/scene.bin)"
+ck "a texture"         "200" "$(code $B/assets/iss/baseColor_1.png)"
+ck "range requests ok" "206" "$(code -H 'Range: bytes=0-99' $B/assets/iss/scene.bin)"
 
 echo "served root is only ours:"
 ck "50x.html not served"   404 "$(code $B/50x.html)"

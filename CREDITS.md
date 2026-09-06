@@ -34,7 +34,7 @@ Unlike the planet textures, the JWST **geometry** is used, not just its maps.
 
 ## The ISS
 
-`assets/ISS_stationary.glb` is NASA's own model of the station, from
+`assets/iss/scene.gltf` is NASA's own model of the station, from
 [science.nasa.gov](https://science.nasa.gov/resource/international-space-station-3d-model/),
 made by **NASA's Visualization Technology Applications and Development (VTAD)**
 team and published 2019-04-22.
@@ -49,15 +49,43 @@ gives one anyway, in the app's Credits panel.
 This is the one asset whose *geometry* is used rather than just its maps,
 because the station is not a sphere and nothing here could generate it.
 
+### The file shipped here is a derivative
+
+NASA's download is a single-file `ISS_stationary.glb` of 42.43 MB. What ships
+here is that model repacked with glTF-Transform v4.5.0 into separated form —
+`scene.gltf` plus `scene.bin` and 26 PNG textures, **40.5 MB** in total.
+
+The geometry is untouched, and that is checked rather than assumed: node, mesh,
+accessor, material, image and primitive counts all match the original exactly
+(132 / 131 / 1372 / 28 / 26 / 343), as does the total element count across every
+accessor (1,718,763). Only `bufferViews` differ — 1398 against 344 — which is
+glTF-Transform consolidating them on repack.
+
+Draco was deliberately not used: the app constructs a bare `GLTFLoader` with no
+`DRACOLoader`, so Draco-compressed geometry would simply fail to load.
+
+**The size saving is small; the caching win is not.** Separating the file cut
+only 1.9 MB, but it changed what a CDN will hold: a `.glb` is not in
+Cloudflare's default cacheable-extension list and was served uncached from the
+origin every time, whereas `.bin` and `.png` are cached at the edge. Nearly all
+of the 40 MB now comes from the CDN instead of the server.
+
+The textures are PNG. Re-encoding them to WebP would take this to roughly 16 MB,
+and the vendored `GLTFLoader` does support `EXT_texture_webp`, so that remains
+open as a further step.
+
+### Identifying it
+
 The file arrived without the `license.txt` that accompanies the Sketchfab
-models, so its origin was unknown for a while, and the file records nothing
-itself: its glTF `asset` block carries only `"generator": "Khronos Blender glTF
-2.0 I/O"`, and a `strings` sweep of all 42 MB finds no author, licence or URL.
-What identified it in the end was the source being named directly — corroborated
-by the download on that page being a glTF of **42.43 MB**, exactly the size of
-this file, and by its 89 nodes named as numbered ISS elements in assembly order
-(`01 Zarya - (FGB) Funtional Cargo Block`, `34 Poisk (MRM-2) Mini Research
-Module`), which is how NASA's multi-part model is structured.
+models, so its origin was unknown for a while, and it records nothing itself:
+the original's glTF `asset` block carried only `"generator": "Khronos Blender
+glTF 2.0 I/O"`, and a `strings` sweep of all 42 MB found no author, licence or
+URL. What identified it in the end was the source being named directly —
+corroborated by the download on that page being a glTF of **42.43 MB**, exactly
+the size of the original this was converted from, and by its 89 nodes named as
+numbered ISS elements in assembly order (`01 Zarya - (FGB) Funtional Cargo
+Block`, `34 Poisk (MRM-2) Mini Research Module`), which is how NASA's multi-part
+model is structured.
 
 ## Source models, removed
 
